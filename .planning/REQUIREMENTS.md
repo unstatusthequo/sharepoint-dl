@@ -11,13 +11,13 @@ Requirements for initial release. Each maps to roadmap phases.
 
 - [x] **AUTH-01**: User can authenticate via Playwright browser session capture (login once, cookies reused)
 - [x] **AUTH-02**: Tool validates session is active before starting any downloads
-- [ ] **AUTH-03**: Tool detects expired session mid-run and prompts user to re-authenticate
+- [x] **AUTH-03**: Tool detects expired session mid-run and prompts user to re-authenticate
 
 ### Enumeration
 
-- [ ] **ENUM-01**: Tool recursively traverses all folders/subfolders via SharePoint REST API
-- [ ] **ENUM-02**: Tool paginates folder listings with `$skiptoken` to capture all files (no silent truncation)
-- [ ] **ENUM-03**: Tool displays total file count found before downloading begins
+- [x] **ENUM-01**: Tool recursively traverses all folders/subfolders via SharePoint REST API
+- [x] **ENUM-02**: Tool paginates folder listings with `$skiptoken` to capture all files (no silent truncation)
+- [x] **ENUM-03**: Tool displays total file count found before downloading begins
 
 ### Download Engine
 
@@ -35,7 +35,7 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### CLI & UX
 
-- [ ] **CLI-01**: User can specify download destination folder at launch
+- [x] **CLI-01**: User can specify download destination folder at launch
 - [ ] **CLI-02**: Tool shows per-file and overall progress bars during download
 - [ ] **CLI-03**: Tool shows clear error summary at end of run with file-level detail
 
@@ -84,11 +84,11 @@ Which phases cover which requirements. Updated during roadmap creation.
 |-------------|-------|--------|
 | AUTH-01 | Phase 1 | Complete |
 | AUTH-02 | Phase 1 | Complete |
-| AUTH-03 | Phase 1 | Pending |
-| ENUM-01 | Phase 1 | Pending |
-| ENUM-02 | Phase 1 | Pending |
-| ENUM-03 | Phase 1 | Pending |
-| CLI-01 | Phase 1 | Pending |
+| AUTH-03 | Phase 1 | Complete |
+| ENUM-01 | Phase 1 | Complete |
+| ENUM-02 | Phase 1 | Complete |
+| ENUM-03 | Phase 1 | Complete |
+| CLI-01 | Phase 1 | Complete |
 | DWNL-01 | Phase 2 | Pending |
 | DWNL-02 | Phase 2 | Pending |
 | DWNL-03 | Phase 2 | Pending |
