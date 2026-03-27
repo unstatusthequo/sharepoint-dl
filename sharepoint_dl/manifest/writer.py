@@ -11,7 +11,7 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
-from sharepoint_dl.state.job_state import FileStatus, JobState
+from sharepoint_dl.state.job_state import FileStatus, JobState, entry_local_relative_path
 
 TOOL_VERSION = "sharepoint-dl v1.0"
 
@@ -21,6 +21,8 @@ def generate_manifest(
     dest_dir: Path,
     source_url: str,
     root_folder: str,
+    *,
+    flat: bool = False,
 ) -> Path:
     """Generate a forensic manifest JSON file from download state.
 
@@ -55,7 +57,7 @@ def generate_manifest(
             {
                 "name": entry["name"],
                 "server_relative_url": url,
-                "local_path": entry["folder_path"] + "/" + entry["name"],
+                "local_path": entry_local_relative_path(entry, flat=flat),
                 "size_bytes": entry["size_bytes"],
                 "sha256": entry["sha256"],
                 "downloaded_at": entry["downloaded_at"],

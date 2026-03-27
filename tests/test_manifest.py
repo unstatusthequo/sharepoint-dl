@@ -109,6 +109,56 @@ class TestManifestPerFileFields:
         assert "sha256" in first
         assert "downloaded_at" in first
 
+    def test_manifest_uses_persisted_local_path_for_preserved_folder_entries(
+        self, tmp_path: Path, file_entries: list[FileEntry]
+    ):
+        from sharepoint_dl.manifest.writer import generate_manifest
+
+        state = JobState(tmp_path)
+        state.initialize(file_entries)
+        state.set_status(
+            file_entries[0].server_relative_url,
+            FileStatus.COMPLETE,
+            local_path="custodian1/evidence_001.E01",
+            sha256="aabbccdd" * 8,
+            downloaded_at="2026-03-27T10:00:00Z",
+        )
+
+        path = generate_manifest(
+            state=state,
+            dest_dir=tmp_path,
+            source_url="https://contoso.sharepoint.com/sites/shared/Images",
+            root_folder="Images",
+        )
+
+        manifest = json.loads(path.read_text())
+        assert manifest["files"][0]["local_path"] == "custodian1/evidence_001.E01"
+
+    def test_manifest_uses_persisted_local_path_for_flat_entries(
+        self, tmp_path: Path, file_entries: list[FileEntry]
+    ):
+        from sharepoint_dl.manifest.writer import generate_manifest
+
+        state = JobState(tmp_path)
+        state.initialize(file_entries)
+        state.set_status(
+            file_entries[0].server_relative_url,
+            FileStatus.COMPLETE,
+            local_path="evidence_001.E01",
+            sha256="aabbccdd" * 8,
+            downloaded_at="2026-03-27T10:00:00Z",
+        )
+
+        path = generate_manifest(
+            state=state,
+            dest_dir=tmp_path,
+            source_url="https://contoso.sharepoint.com/sites/shared/Images",
+            root_folder="Images",
+        )
+
+        manifest = json.loads(path.read_text())
+        assert manifest["files"][0]["local_path"] == "evidence_001.E01"
+
 
 class TestManifestMetadata:
     """generate_manifest() includes top-level metadata."""
@@ -278,6 +328,105 @@ class TestManifestEdgeCases:
         assert manifest["files"] == []
         assert manifest["metadata"]["total_files"] == 0
         assert manifest["metadata"]["total_size_bytes"] == 0
+
+    def test_missing_local_path_uses_shared_legacy_fallback(
+        self, tmp_path: Path, file_entries: list[FileEntry]
+    ):
+        from sharepoint_dl.manifest.writer import generate_manifest
+
+        state = JobState(tmp_path)
+        state.initialize(file_entries)
+        state.set_status(
+            file_entries[0].server_relative_url,
+            FileStatus.COMPLETE,
+            sha256="aabbccdd" * 8,
+            downloaded_at="2026-03-27T10:00:00Z",
+        )
+
+        path = generate_manifest(
+            state=state,
+            dest_dir=tmp_path,
+            source_url="https://contoso.sharepoint.com/sites/shared/Images",
+            root_folder="Images",
+        )
+
+        manifest = json.loads(path.read_text())
+        assert manifest["files"][0]["local_path"] == "custodian1/evidence_001.E01"
+
+    def test_invalid_stored_local_path_falls_back_safely(
+        self, tmp_path: Path, file_entries: list[FileEntry]
+    ):
+        from sharepoint_dl.manifest.writer import generate_manifest
+
+        state = JobState(tmp_path)
+        state.initialize(file_entries)
+        state.set_status(
+            file_entries[0].server_relative_url,
+            FileStatus.COMPLETE,
+            local_path="../escape/evidence_001.E01",
+            sha256="aabbccdd" * 8,
+            downloaded_at="2026-03-27T10:00:00Z",
+        )
+
+        path = generate_manifest(
+            state=state,
+            dest_dir=tmp_path,
+            source_url="https://contoso.sharepoint.com/sites/shared/Images",
+            root_folder="Images",
+        )
+
+        manifest = json.loads(path.read_text())
+        assert manifest["files"][0]["local_path"] == "custodian1/evidence_001.E01"
+
+    def test_persisted_local_path_wins_over_fallback(
+        self, tmp_path: Path, file_entries: list[FileEntry]
+    ):
+        from sharepoint_dl.manifest.writer import generate_manifest
+
+        state = JobState(tmp_path)
+        state.initialize(file_entries)
+        state.set_status(
+            file_entries[0].server_relative_url,
+            FileStatus.COMPLETE,
+            local_path="evidence/custom-name.E01",
+            sha256="aabbccdd" * 8,
+            downloaded_at="2026-03-27T10:00:00Z",
+        )
+
+        path = generate_manifest(
+            state=state,
+            dest_dir=tmp_path,
+            source_url="https://contoso.sharepoint.com/sites/shared/Images",
+            root_folder="Images",
+        )
+
+        manifest = json.loads(path.read_text())
+        assert manifest["files"][0]["local_path"] == "evidence/custom-name.E01"
+
+    def test_missing_local_path_uses_flat_fallback_when_requested(
+        self, tmp_path: Path, file_entries: list[FileEntry]
+    ):
+        from sharepoint_dl.manifest.writer import generate_manifest
+
+        state = JobState(tmp_path)
+        state.initialize(file_entries)
+        state.set_status(
+            file_entries[0].server_relative_url,
+            FileStatus.COMPLETE,
+            sha256="aabbccdd" * 8,
+            downloaded_at="2026-03-27T10:00:00Z",
+        )
+
+        path = generate_manifest(
+            state=state,
+            dest_dir=tmp_path,
+            source_url="https://contoso.sharepoint.com/sites/shared/Images",
+            root_folder="Images",
+            flat=True,
+        )
+
+        manifest = json.loads(path.read_text())
+        assert manifest["files"][0]["local_path"] == "evidence_001.E01"
 
 
 class TestManifestSha256FromState:

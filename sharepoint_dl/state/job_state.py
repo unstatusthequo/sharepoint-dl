@@ -21,6 +21,50 @@ class FileStatus(str, Enum):
     FAILED = "failed"
 
 
+def validate_local_relative_path(local_path: str | None) -> str | None:
+    """Return a normalized relative local path when it is safe to use."""
+    if not local_path:
+        return None
+
+    relative = Path(local_path)
+    if relative.is_absolute() or ".." in relative.parts:
+        return None
+
+    return relative.as_posix()
+
+
+def derive_local_relative_path(folder_path: str, name: str, *, flat: bool = False) -> str:
+    """Derive the relative output path for a SharePoint file."""
+    if flat:
+        return name
+
+    parts = Path(folder_path.strip("/")).parts
+    if len(parts) > 3:
+        relative = Path(*parts[3:])
+    elif len(parts) > 2:
+        relative = Path(parts[-1])
+    else:
+        relative = Path(".")
+
+    if relative == Path("."):
+        return name
+    return (relative / name).as_posix()
+
+
+def entry_local_relative_path(entry: dict, *, flat: bool = False) -> str | None:
+    """Return the best relative local path for a state entry."""
+    stored = validate_local_relative_path(entry.get("local_path"))
+    if stored is not None:
+        return stored
+
+    folder = entry.get("folder_path")
+    name = entry.get("name")
+    if not folder or not name:
+        return None
+
+    return derive_local_relative_path(folder, name, flat=flat)
+
+
 class JobState:
     """Thread-safe job state persisted as state.json in destination directory.
 
@@ -138,27 +182,11 @@ class JobState:
     @staticmethod
     def _resolve_interrupted_part_path(dest_dir: Path, entry: dict) -> Path | None:
         """Resolve the exact .part path for one interrupted entry."""
-        local_path = entry.get("local_path")
-        if local_path:
-            local = Path(local_path)
-            if local.is_absolute() or ".." in local.parts:
-                return None
-            return (dest_dir / local).with_suffix((dest_dir / local).suffix + ".part")
-
-        folder = entry.get("folder_path")
-        name = entry.get("name")
-        if not folder or not name:
+        local_path = entry_local_relative_path(entry)
+        if local_path is None:
             return None
 
-        parts = Path(folder.strip("/")).parts
-        if len(parts) > 3:
-            relative = Path(*parts[3:])
-        elif len(parts) > 2:
-            relative = Path(parts[-1])
-        else:
-            relative = Path(".")
-
-        local = dest_dir / relative / name
+        local = dest_dir / local_path
         return local.with_suffix(local.suffix + ".part")
 
     def all_entries(self) -> dict[str, dict]:

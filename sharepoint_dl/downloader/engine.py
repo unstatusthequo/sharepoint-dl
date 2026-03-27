@@ -31,7 +31,7 @@ from tenacity import (
 from tenacity.wait import wait_base
 
 from sharepoint_dl.enumerator.traversal import AuthExpiredError, FileEntry
-from sharepoint_dl.state.job_state import FileStatus, JobState
+from sharepoint_dl.state.job_state import FileStatus, JobState, derive_local_relative_path
 
 if TYPE_CHECKING:
     pass
@@ -286,18 +286,5 @@ def _local_path(dest_dir: Path, file_entry: FileEntry, flat: bool = False) -> Pa
     Returns:
         Path to the local file destination.
     """
-    if flat:
-        return dest_dir / file_entry.name
-
-    # folder_path is like /sites/shared/Images/custodian1
-    # Strip leading slash and take the last component(s) as relative path
-    parts = file_entry.folder_path.strip("/").split("/")
-    # Skip site-level prefix (sites/sitename/library) — keep from the 3rd segment onward
-    # This matches the SharePoint URL structure: /sites/{site}/{library}/{folders...}
-    if len(parts) > 3:
-        relative = Path(*parts[3:])
-    elif len(parts) > 2:
-        relative = Path(parts[-1])
-    else:
-        relative = Path(".")
-    return dest_dir / relative / file_entry.name
+    relative = derive_local_relative_path(file_entry.folder_path, file_entry.name, flat=flat)
+    return dest_dir / relative
