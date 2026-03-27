@@ -19,7 +19,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 3: Forensic Deliverables** - Manifest, completeness report, and CLI polish (completed 2026-03-27)
 - [x] **Phase 4: Resume Safety and Failure Reporting** - Path-safe resume cleanup, pre-download visibility, and auth-expiry summaries (completed 2026-03-27)
 - [x] **Phase 5: Manifest Path Accuracy** - Manifest local_path matches the real on-disk output path in every download mode (completed 2026-03-27)
-- [ ] **Phase 6: Audit Evidence Normalization** - Planning artifacts reconciled so milestone re-audit can pass cleanly
+- [x] **Phase 6: Audit Evidence Normalization** - Planning artifacts reconciled so milestone re-audit can pass cleanly (completed 2026-03-27)
 
 ## Phase Details
 
@@ -111,7 +111,7 @@ Plans:
 **Plans**: 1 plan
 
 Plans:
-- [ ] 06-01-PLAN.md — Verification-doc normalization for Phases 1-3 + roadmap plan-count/progress reconciliation
+- [x] 06-01-PLAN.md — Verification-doc normalization for Phases 1-3 + roadmap plan-count/progress reconciliation
 
 ## Progress
 
@@ -125,4 +125,4 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6
 | 3. Forensic Deliverables | 2/2 | Complete    | 2026-03-27 |
 | 4. Resume Safety and Failure Reporting | 2/2 | Complete   | 2026-03-27 |
 | 5. Manifest Path Accuracy | 1/1 | Complete | 2026-03-27 |
-| 6. Audit Evidence Normalization | 0/1 | Planned | - |
+| 6. Audit Evidence Normalization | 1/1 | Complete | 2026-03-27 |

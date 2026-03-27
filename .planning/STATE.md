@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: completed
-stopped_at: Completed 05-01-PLAN.md
-last_updated: "2026-03-27T23:09:25Z"
-last_activity: 2026-03-27 — Verified Phase 05 manifest path accuracy
+stopped_at: Completed 06-01-PLAN.md
+last_updated: "2026-03-27T23:26:38Z"
+last_activity: 2026-03-27 — Verified Phase 06 audit evidence normalization
 progress:
   total_phases: 6
-  completed_phases: 5
-  total_plans: 11
-  completed_plans: 11
+  completed_phases: 6
+  total_plans: 12
+  completed_plans: 12
   percent: 100
 ---
 
@@ -21,23 +21,23 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-27)
 
 **Core value:** Every file in the shared folder is downloaded, and the user can prove it — no silent failures, no missing files, no guesswork.
-**Current focus:** Phase 6 — Audit Evidence Normalization
+**Current focus:** Milestone re-audit
 
 ## Current Position
 
-Phase: 5 of 6 (Manifest Path Accuracy)
+Phase: 6 of 6 (Audit Evidence Normalization)
 Plan: 1 of 1 in current phase
 Status: Complete
-Last activity: 2026-03-27 — Completed 05-01 manifest path accuracy
+Last activity: 2026-03-27 — Completed 06-01 audit evidence normalization
 
 Progress: [██████████] 100%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 6
-- Average duration: 2.7min
-- Total execution time: 16min
+- Total plans completed: 7
+- Average duration: 3.7min
+- Total execution time: 26min
 
 **By Phase:**
 
@@ -54,6 +54,7 @@ Progress: [██████████] 100%
 | Phase 03 P01 | 2min | 1 tasks | 4 files |
 | Phase 03 P02 | 2min | 1 tasks | 2 files |
 | Phase 05 P01 | 20min | 2 tasks | 6 files |
+| Phase 06 P01 | 10min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -82,6 +83,8 @@ Recent decisions affecting current work:
 - [04-02]: Auth-expired runs reload persisted JobState before summary/reporting so the CLI does not abort before evidence is written
 - [05-01]: Manifest local_path uses persisted relative state first and falls back through one shared safe derivation helper
 - [05-01]: CLI passes flat-mode context into manifest generation so legacy flat manifests match the real output layout
+- [06-01]: Verification reports now record later gap-phase ownership explicitly instead of leaving original phases claiming final closure
+- [06-01]: Completed manual checks stay recorded as completed evidence, not as open human-needed gates
 
 ### Pending Todos
 
@@ -94,6 +97,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-27T23:09:25Z
-Stopped at: Completed 05-01-PLAN.md
+Last session: 2026-03-27T23:26:38Z
+Stopped at: Completed 06-01-PLAN.md
 Resume file: None
