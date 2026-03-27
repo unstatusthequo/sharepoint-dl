@@ -275,7 +275,7 @@ def download(
     # 9. Manifest generation
     manifest_path = None
     if not no_manifest and state is not None:
-        manifest_path = generate_manifest(state, dest, url, root_folder)
+        manifest_path = generate_manifest(state, dest, url, root_folder, flat=flat)
 
     # 10. Completeness report
     status_ok = not auth_expired and len(failed) == 0

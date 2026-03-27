@@ -404,6 +404,7 @@ class TestDownloadAuthExpiredState:
         state.set_status(
             "/a/f1.dat",
             FileStatus.COMPLETE,
+            local_path="custodian1/f1.dat",
             sha256="abc123",
             downloaded_at="2026-03-27T12:00:00Z",
         )
@@ -435,6 +436,7 @@ class TestDownloadAuthExpiredState:
         assert manifest["metadata"]["total_files"] == 1
         assert len(manifest["files"]) == 1
         assert len(manifest["failed"]) == 1
+        assert manifest["files"][0]["local_path"] == "custodian1/f1.dat"
         assert manifest["failed"][0]["error"] == "auth_expired"
 
 
@@ -534,6 +536,57 @@ class TestManifestIntegration:
         assert args[0][1] == Path("/tmp/dest")  # dest_dir
         assert args[0][2] == TEST_URL  # source_url
         assert args[0][3] == "/sites/shared/Docs"  # root_folder
+        assert args.kwargs["flat"] is False
+
+    @patch("sharepoint_dl.cli.main.download_all")
+    @patch("sharepoint_dl.cli.main._make_progress")
+    @patch("sharepoint_dl.cli.main.enumerate_files")
+    @patch("sharepoint_dl.cli.main.validate_session")
+    @patch("sharepoint_dl.cli.main.load_session")
+    def test_manifest_uses_real_state_for_flat_legacy_entries(
+        self, mock_load, mock_validate, mock_enum, mock_progress, mock_dl, tmp_path: Path
+    ):
+        dest = tmp_path / "dest"
+        dest.mkdir()
+        files = [
+            FileEntry(name="flat.dat", server_relative_url="/a/flat.dat", size_bytes=100, folder_path="/a/b"),
+        ]
+        _setup_download_mocks(
+            mock_load,
+            mock_validate,
+            mock_enum,
+            mock_progress,
+            mock_dl,
+            files,
+            ["/a/flat.dat"],
+            [],
+        )
+
+        state = JobState(dest)
+        state.initialize(files)
+        state.set_status(
+            "/a/flat.dat",
+            FileStatus.COMPLETE,
+            sha256="abc123",
+            downloaded_at="2026-03-27T12:00:00Z",
+        )
+
+        result = runner.invoke(
+            app,
+            [
+                "download",
+                TEST_URL,
+                str(dest),
+                "--root-folder",
+                "/sites/shared/Docs",
+                "--yes",
+                "--flat",
+            ],
+        )
+
+        assert result.exit_code == 0
+        manifest = json.loads((dest / "manifest.json").read_text())
+        assert manifest["files"][0]["local_path"] == "flat.dat"
 
     @patch("sharepoint_dl.cli.main.generate_manifest")
     @patch("sharepoint_dl.cli.main.JobState")
