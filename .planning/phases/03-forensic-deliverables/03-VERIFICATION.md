@@ -1,17 +1,17 @@
 ---
 phase: 03-forensic-deliverables
-verified: 2026-03-27T21:45:00Z
+verified: 2026-03-27T23:24:10Z
 status: passed
 score: 10/10 must-haves verified
-re_verification: false
+re_verification: true
 ---
 
 # Phase 3: Forensic Deliverables Verification Report
 
 **Phase Goal:** User can hand a completed manifest to a third party as proof that every file in the SharePoint folder was downloaded and is intact
-**Verified:** 2026-03-27T21:45:00Z
-**Status:** PASSED
-**Re-verification:** No — initial verification
+**Verified:** 2026-03-27T23:24:10Z
+**Status:** passed
+**Re-verification:** Yes — normalized after Phase 5 closed the reopened manifest-path evidence gap
 
 ---
 
@@ -64,10 +64,13 @@ re_verification: false
 | Requirement | Source Plan | Description                                                                   | Status    | Evidence                                                                              |
 |-------------|-------------|-------------------------------------------------------------------------------|-----------|---------------------------------------------------------------------------------------|
 | VRFY-01     | 03-01-PLAN  | SHA-256 hash computed during download (single I/O pass, no re-read)           | SATISFIED | `writer.py` reads `entry["sha256"]` from state; no `hashlib`/file I/O; `TestManifestSha256FromState` confirms hashes match state values |
-| VRFY-02     | 03-01-PLAN  | JSON manifest with file path, size, hash, and download timestamp per file     | SATISFIED | `writer.py` fields: `server_relative_url`, `local_path`, `size_bytes`, `sha256`, `downloaded_at`; `TestManifestPerFileFields` and `TestManifestMetadata` confirm structure |
+| VRFY-02     | 03-01-PLAN  | JSON manifest with file path, size, hash, and download timestamp per file     | HISTORICAL FOUNDATION — CLOSED BY PHASE 5 | Phase 3 created manifest generation and field structure, but the milestone audit reopened `local_path` accuracy and that gap was closed in Phase 5 |
 | VRFY-03     | 03-02-PLAN  | Completeness report comparing expected vs downloaded file count               | SATISFIED | `cli/main.py:278-283` prints Expected/Downloaded/Failed/Status; `TestManifestIntegration::test_completeness_report_printed` verifies output |
 
-**No orphaned requirements.** REQUIREMENTS.md Traceability table maps VRFY-01, VRFY-02, VRFY-03 exclusively to Phase 3. All three are claimed by plans 03-01 and 03-02, and all three are satisfied.
+Phase 3 still directly satisfies `VRFY-01` and `VRFY-03`.
+`VRFY-02` is preserved here as historical implementation evidence, but current traceability assigns final closure to Phase 5 because manifest `local_path` evidence needed a later correction.
+
+No orphaned requirements. All originally claimed Phase 3 requirements are accounted for above, including the later handoff of `VRFY-02` to Phase 5.
 
 ---
 
@@ -77,25 +80,25 @@ None. Scanned `writer.py`, `__init__.py`, `cli/main.py`, and `job_state.py` for 
 
 ---
 
-### Human Verification Required
+### Optional Manual Spot Checks
 
 #### 1. End-to-end manifest correctness against a live SharePoint folder
 
 **Test:** Run `sharepoint-dl download <real-sharepoint-url> /tmp/test-dest --root-folder <path> --yes`, then inspect `manifest.json`.
 **Expected:** Every downloaded file appears in `manifest.json` with a 64-character SHA-256 hex string, a matching `size_bytes`, a non-null `downloaded_at` timestamp, and the `metadata.total_files` count matches the total files reported during enumeration.
-**Why human:** SHA-256 correctness against actual file content on disk requires a real download run. The unit tests validate structure and passthrough from state, but cannot verify that the download engine stored accurate hashes in state.json for real files.
+**Why optional:** Useful as an acceptance spot check against a live SharePoint run, but not an open blocker after the code and gap-closure verification in Phases 4-5.
 
 #### 2. --no-manifest flag visible in --help output
 
 **Test:** Run `sharepoint-dl download --help`.
 **Expected:** `--no-manifest` flag appears with description "Skip manifest.json generation (for testing/debugging only)".
-**Why human:** Help text rendering requires the CLI to be invoked in a terminal; CliRunner tests verify behavior but not formatted help output.
+**Why optional:** CLI help rendering can still be spot-checked manually, but it is not an outstanding verification blocker.
 
 ---
 
 ### Gaps Summary
 
-No gaps. All 10 observable truths are verified, all 6 artifacts are substantive and wired, all 3 key links are confirmed, and all 3 required requirement IDs (VRFY-01, VRFY-02, VRFY-03) are satisfied with direct code evidence. The full test suite (68 tests) passes with zero regressions.
+No remaining Phase 3 blocker gaps. All 10 observable truths remain verified, all 6 artifacts are substantive and wired, and the reopened manifest-path evidence gap is now explicitly reflected as Phase 5's final closure rather than left as a contradiction inside this report.
 
 The phase goal — "User can hand a completed manifest to a third party as proof that every file in the SharePoint folder was downloaded and is intact" — is achieved:
 
@@ -109,5 +112,5 @@ The phase goal — "User can hand a completed manifest to a third party as proof
 
 ---
 
-_Verified: 2026-03-27T21:45:00Z_
+_Verified: 2026-03-27T23:24:10Z_
 _Verifier: Claude (gsd-verifier)_

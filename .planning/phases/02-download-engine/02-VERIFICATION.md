@@ -1,17 +1,17 @@
 ---
 phase: 02-download-engine
-verified: 2026-03-27T21:00:00Z
+verified: 2026-03-27T23:24:10Z
 status: passed
 score: 11/11 must-haves verified
-re_verification: false
+re_verification: true
 ---
 
 # Phase 2: Download Engine Verification Report
 
 **Phase Goal:** Every file downloads correctly — 2GB files stream without memory issues, interrupted runs resume cleanly, and no file is ever silently skipped
-**Verified:** 2026-03-27T21:00:00Z
+**Verified:** 2026-03-27T23:24:10Z
 **Status:** passed
-**Re-verification:** No — initial verification
+**Re-verification:** Yes — normalized after Phase 4 finalized the reopened resume and auth-expiry reporting gaps
 
 ---
 
@@ -45,7 +45,7 @@ Plan 03 (human checkpoint):
 | #  | Truth                                                               | Status     | Evidence                                                        |
 |----|---------------------------------------------------------------------|------------|-----------------------------------------------------------------|
 | -  | Real file downloads from live SharePoint target                     | VERIFIED   | 02-03-SUMMARY.md: 1.5GB file streamed, SHA-256 recorded        |
-| -  | Resume works after interrupt                                        | VERIFIED   | 02-03-SUMMARY.md: state.json persists, complete files skipped  |
+| -  | Resume works after interrupt                                        | VERIFIED BY DESIGN | 02-03-SUMMARY.md explicitly says resume was "verified by design" from persisted state behavior, not re-run live end to end |
 | -  | Progress bars visible during multi-file download                    | VERIFIED   | 02-03-SUMMARY.md: Rich progress bars confirmed working         |
 
 **Score:** 11/11 truths verified
@@ -84,14 +84,17 @@ Plan 03 (human checkpoint):
 | Requirement | Source Plan | Description                                               | Status    | Evidence                                                             |
 |-------------|-------------|-----------------------------------------------------------|-----------|----------------------------------------------------------------------|
 | DWNL-01     | 02-01       | Streams downloads in 8MB chunks, handles files up to 2GB | SATISFIED | `CHUNK_SIZE = 8_388_608`; `iter_content(chunk_size=CHUNK_SIZE)`; 1.5GB file verified live |
-| DWNL-02     | 02-01       | Resumes interrupted runs — skips completed, retries failures | SATISFIED | `pending_files()` returns PENDING/FAILED/DOWNLOADING; `cleanup_interrupted()` removes .part files |
+| DWNL-02     | 02-01       | Resumes interrupted runs — skips completed, retries failures | HISTORICAL FOUNDATION — CLOSED BY PHASE 4 | Phase 2 built resume/state mechanics, but the duplicate-filename cleanup gap was reopened by the milestone audit and closed in Phase 4 |
 | DWNL-03     | 02-01       | Tracks all failures explicitly — no file silently skipped | SATISFIED | Every exception path calls `set_status(FAILED, error=...)` in engine.py |
 | DWNL-04     | 02-02       | Exits with non-zero code if any file fails               | SATISFIED | `main.py:276` `raise typer.Exit(code=1)` when `failed` list is non-empty |
 | DWNL-05     | 02-02       | Downloads 2-4 files concurrently                         | SATISFIED | `ThreadPoolExecutor(max_workers=workers)` default 3; `--workers` range 1-8 |
 | CLI-02      | 02-02       | Shows per-file and overall progress bars during download  | SATISFIED | `_make_progress()` creates Rich Progress with per-worker + overall tasks |
-| CLI-03      | 02-02       | Shows clear error summary at end of run with file-level detail | SATISFIED | Rich Table with File/Error columns at `main.py:259-276`; exit 1 |
+| CLI-03      | 02-02       | Shows clear error summary at end of run with file-level detail | HISTORICAL FOUNDATION — CLOSED BY PHASE 4 | Phase 2 implemented the normal end-of-run error table, but auth-expiry reporting was reopened by the milestone audit and normalized in Phase 4 |
 
-All 7 phase-2 requirements satisfied. No orphaned requirements — all 7 IDs from REQUIREMENTS.md traceability table appear in plan frontmatter and are implemented.
+Phase 2 still directly satisfies `DWNL-01`, `DWNL-03`, `DWNL-04`, `DWNL-05`, and `CLI-02`.
+`DWNL-02` and `CLI-03` are preserved here as historical implementation evidence, but current traceability assigns their final closure to Phase 4.
+
+No orphaned requirements — every originally claimed Phase 2 requirement is accounted for above, including the two later gap-closure handoffs.
 
 ---
 
@@ -129,15 +132,15 @@ Plan 02-03 was a blocking human-verify checkpoint. It was completed and document
 5. **Progress bars** — Rich progress bars confirmed visible during download.
 6. **Resume** — verified by design via state.json; completed files are status=complete and excluded from pending_files() on re-run.
 
-No outstanding human verification items remain.
+No outstanding human verification items remain. The only correction in this re-verification pass is that resume stays labeled `verified by design`, matching `02-03-SUMMARY.md`.
 
 ---
 
 ## Gaps Summary
 
-No gaps. All 11 observable truths verified, all 8 required artifacts exist and are substantive, all 5 key links are wired, all 7 requirement IDs are satisfied, and the full 41-test suite passes. The human verification checkpoint (Plan 03) was completed successfully against the live SharePoint target.
+No remaining Phase 2 blocker gaps. All 11 observable truths remain verified, the human verification checkpoint was completed successfully against the live SharePoint target, and the reopened resume/auth-expiry gaps are now explicitly handed off to Phase 4 where they were finally closed.
 
 ---
 
-_Verified: 2026-03-27T21:00:00Z_
+_Verified: 2026-03-27T23:24:10Z_
 _Verifier: Claude (gsd-verifier)_

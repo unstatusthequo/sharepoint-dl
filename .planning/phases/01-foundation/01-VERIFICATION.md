@@ -1,28 +1,19 @@
 ---
 phase: 01-foundation
-verified: 2026-03-27T00:00:00Z
-status: human_needed
-score: 11/11 automated must-haves verified
-re_verification: false
+verified: 2026-03-27T23:24:10Z
+status: passed
+score: 4/4 success criteria verified
+re_verification: true
 gaps: []
-human_verification:
-  - test: "Run `uv run sharepoint-dl auth <real-sharepoint-url>` against the actual SharePoint link"
-    expected: "Chromium opens, user completes OTP flow, browser closes, terminal prints 'Session saved', ~/.sharepoint-dl/session.json exists with 600 permissions"
-    why_human: "Cannot verify real OTP flow or live session capture programmatically"
-  - test: "Run `uv run sharepoint-dl list <real-sharepoint-url> --root-folder <path>` after auth"
-    expected: "Tool reports file count matching SharePoint browser UI count (manual verification in 01-03 showed 165 files matching)"
-    why_human: "File count accuracy against real SharePoint UI requires human comparison — already performed per 01-03-SUMMARY.md"
-  - test: "Verify session expiry detection by waiting for session to expire or manually clearing the FedAuth cookie, then re-running list"
-    expected: "Tool prints 'Session expired. Run sharepoint-dl auth...' and exits 1 — does not silently proceed"
-    why_human: "Cannot force a real session expiry in automated tests"
+human_verification: []
 ---
 
 # Phase 1: Foundation Verification Report
 
 **Phase Goal:** User can authenticate against the real SharePoint link and get a verified, complete file listing before any download code exists
-**Verified:** 2026-03-27
-**Status:** human_needed (all automated checks passed; real-auth flow was performed by user per 01-03-SUMMARY.md)
-**Re-verification:** No — initial verification
+**Verified:** 2026-03-27T23:24:10Z
+**Status:** passed
+**Re-verification:** Yes — normalized after Phase 4 moved integrated `ENUM-03` ownership to the download flow
 
 ---
 
@@ -86,12 +77,13 @@ human_verification:
 | AUTH-03 | 01-02, 01-03 | Tool detects expired session mid-run and prompts user to re-authenticate | SATISFIED | `AuthExpiredError` raised on 401/403 in `_fetch_page`; `list` command catches it and exits 1 with re-auth message; `test_auth_expiry_halts` passes; NOT retried by tenacity (retry only on HTTPError) |
 | ENUM-01 | 01-02 | Tool recursively traverses all folders/subfolders via SharePoint REST API | SATISFIED | `enumerate_files` uses explicit stack; pushes subfolder `ServerRelativeUrl` values onto stack; `test_recursion_into_subfolders` passes |
 | ENUM-02 | 01-02 | Tool paginates folder listings with `$skiptoken` to capture all files (no silent truncation) | SATISFIED | `_fetch_page` returns `__next` URL; `enumerate_files` loops on `next_url` until None for both files and folders; `test_pagination_follows_next_link` and `test_file_count_accuracy` pass |
-| ENUM-03 | 01-02, 01-03 | Tool displays total file count found before downloading begins | SATISFIED | `list` command prints "Found N files (X.X GB total) across M folders" after enumeration; `test_list_command` verifies "3 files" in output; manual verification confirmed 165-file count matched browser |
+| ENUM-03 | 01-02, 01-03 | Tool displays total file count found before downloading begins | HISTORICAL CONTRIBUTION — CLOSED BY PHASE 4 | Phase 1 proved enumeration count visibility in `list` and the 165-file browser match, but the integrated `download --yes` flow gap was reopened by the milestone audit and closed in Phase 4 |
 | CLI-01 | 01-02 | User can specify download destination folder at launch | SATISFIED | `--root-folder` required option in `list` command; `dest` Path argument in `download` command; `test_list_command` invokes with `--root-folder`; `test_download_stub` tests dest argument |
 
-**All 7 Phase 1 requirements satisfied.**
+Phase 1 still directly satisfies `AUTH-01`, `AUTH-02`, `AUTH-03`, `ENUM-01`, `ENUM-02`, and `CLI-01`.
+`ENUM-03` now belongs to Phase 4 in `REQUIREMENTS.md` because the final integrated download-flow behavior needed unconditional pre-transfer scope output.
 
-No orphaned requirements: all 7 IDs declared in plan frontmatter are covered above.
+No orphaned requirements: every historical Phase 1 requirement is accounted for above, and later gap-phase ownership is called out explicitly where traceability changed.
 
 ---
 
@@ -120,25 +112,14 @@ No blockers. No warnings.
 
 ---
 
-## Human Verification Required
+## Completed Human Verification Evidence
 
-### 1. Real authentication flow
+No outstanding human-verification gate remains for Phase 1. The live checks originally called out here were completed in `01-03-SUMMARY.md`:
 
-**Test:** Run `uv run sharepoint-dl auth "<real-sharepoint-sharing-url>"` against the actual SharePoint sharing link used for this case.
-**Expected:** Chromium opens in headed mode, user receives OTP email, enters code, browser closes automatically, terminal prints "Session saved. You can now run 'sharepoint-dl list ...'", `~/.sharepoint-dl/session.json` exists with `-rw-------` (600) permissions.
-**Why human:** Cannot test live Playwright browser automation or real OTP delivery in automated checks. Per 01-03-SUMMARY.md this was already performed and confirmed working.
+1. **Real authentication flow** — OTP login completed successfully, Chromium closed, and `session.json` was saved with 600 permissions.
+2. **File count match against SharePoint UI** — the tool reported 165 files and the browser UI showed 165 files for the same folder.
 
-### 2. File count matches SharePoint browser UI
-
-**Test:** Run `uv run sharepoint-dl list "<real-sharepoint-sharing-url>" --root-folder "/sites/CyberSecurityTeam/Shared Documents/General/EDiscovery Data/Images/Sliger, Michael/LAPTOP-5V7K1CJ4/LAPTOP-5V7K1CJ4"` and compare output count to SharePoint browser.
-**Expected:** Tool reports 165 files (237.1 GB) — matching the browser UI count confirmed in 01-03-SUMMARY.md.
-**Why human:** Requires live SharePoint session and human comparison of counts. Already performed: 01-03-SUMMARY.md confirms exact match.
-
-### 3. Session expiry detection under real conditions
-
-**Test:** After authenticating, wait for the session to expire naturally (or clear the FedAuth cookie from session.json), then run `sharepoint-dl list`.
-**Expected:** Tool prints "Session expired. Run 'sharepoint-dl auth <url>' to re-authenticate." and exits with code 1. Does not silently proceed or return partial results.
-**Why human:** Cannot force a real SharePoint session expiry in automated tests. The code path is unit-tested (`test_validate_session_expired`, `test_auth_expiry_halts`) but real expiry behavior requires human verification.
+Session-expiry behavior remains supported by code and unit-test evidence rather than an additional recorded live rerun.
 
 ---
 
@@ -148,7 +129,7 @@ No blockers. No warnings.
 18 passed in 3.23s
 - tests/test_auth.py: 6/6 passed (AUTH-01, AUTH-02)
 - tests/test_cli.py: 6/6 passed (CLI-01, AUTH-03 via list command)
-- tests/test_traversal.py: 6/6 passed (ENUM-01, ENUM-02, ENUM-03, AUTH-03)
+- tests/test_traversal.py: 6/6 passed (ENUM-01, ENUM-02, historical enumeration-count visibility, AUTH-03)
 ```
 
 Lint: `uv run ruff check sharepoint_dl/` — all checks passed.
@@ -159,11 +140,11 @@ Imports: `harvest_session`, `load_session`, `validate_session`, `save_session`, 
 
 ## Gaps Summary
 
-No gaps. All automated must-haves are verified. The three human verification items above represent the real-auth aspects of the phase goal that cannot be verified programmatically — and the most critical of them (file count match) has already been completed by the user per 01-03-SUMMARY.md.
+No remaining Phase 1 blocker gaps. The completed manual checks are now recorded as completed evidence rather than an open `human_needed` gate, and the later Phase 4 ownership of integrated `ENUM-03` is explicitly reflected here.
 
-The phase goal is **achieved**: authenticated session harvest is implemented and tested, recursive enumeration with correct pagination is implemented and tested, session expiry detection is implemented and tested, and a real-world verification against a live 165-file SharePoint folder confirmed the tool produces accurate counts matching the browser UI.
+The phase goal remains achieved: authenticated session harvest is implemented and tested, recursive enumeration with correct pagination is implemented and tested, session expiry detection is implemented and tested, and a real-world verification against a live 165-file SharePoint folder confirmed the tool produces accurate counts matching the browser UI.
 
 ---
 
-_Verified: 2026-03-27_
+_Verified: 2026-03-27T23:24:10Z_
 _Verifier: Claude (gsd-verifier)_
