@@ -29,8 +29,8 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Verification & Manifest
 
-- [ ] **VRFY-01**: Tool computes SHA-256 hash during download (single I/O pass, no re-read)
-- [ ] **VRFY-02**: Tool generates JSON manifest with file path, size, hash, and download timestamp per file
+- [x] **VRFY-01**: Tool computes SHA-256 hash during download (single I/O pass, no re-read)
+- [x] **VRFY-02**: Tool generates JSON manifest with file path, size, hash, and download timestamp per file
 - [ ] **VRFY-03**: Tool produces completeness report comparing expected vs downloaded file count
 
 ### CLI & UX
@@ -96,8 +96,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | DWNL-05 | Phase 2 | Complete |
 | CLI-02 | Phase 2 | Complete |
 | CLI-03 | Phase 2 | Complete |
-| VRFY-01 | Phase 3 | Pending |
-| VRFY-02 | Phase 3 | Pending |
+| VRFY-01 | Phase 3 | Complete |
+| VRFY-02 | Phase 3 | Complete |
 | VRFY-03 | Phase 3 | Pending |
 
 **Coverage:**
