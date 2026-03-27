@@ -388,6 +388,7 @@ class TestResumeSkip:
                 "name": entries[0].name,
                 "size_bytes": entries[0].size_bytes,
                 "folder_path": entries[0].folder_path,
+                "local_path": "Docs/file_0.dat",
                 "status": "complete",
                 "sha256": "abc123",
                 "error": None,
@@ -405,3 +406,61 @@ class TestResumeSkip:
         assert len(failed) == 0
         # Only 2 files should have been downloaded (1 was already complete)
         assert session.get.call_count == 2
+
+    def test_persists_local_path_before_streaming(self, tmp_path: Path):
+        entries = _make_test_entries(1)
+        entry = entries[0]
+        site_url = "https://contoso.sharepoint.com/sites/shared"
+
+        def mock_get(url, **kwargs):
+            state_data = json.loads((tmp_path / "state.json").read_text())
+            tracked = state_data[entry.server_relative_url]
+            assert tracked["status"] == "downloading"
+            assert tracked["local_path"] == "Docs/file_0.dat"
+
+            resp = MagicMock()
+            resp.status_code = 200
+            resp.iter_content = MagicMock(return_value=iter([b"A" * 24]))
+            resp.raise_for_status = MagicMock()
+            return resp
+
+        session = MagicMock()
+        session.get = MagicMock(side_effect=mock_get)
+
+        completed, failed = download_all(session, entries, tmp_path, site_url, workers=1)
+
+        assert len(completed) == 1
+        assert len(failed) == 0
+        assert json.loads((tmp_path / "state.json").read_text())[entry.server_relative_url][
+            "local_path"
+        ] == "Docs/file_0.dat"
+
+    def test_persists_flat_local_path_before_streaming(self, tmp_path: Path):
+        entries = _make_test_entries(1)
+        entry = entries[0]
+        site_url = "https://contoso.sharepoint.com/sites/shared"
+
+        def mock_get(url, **kwargs):
+            state_data = json.loads((tmp_path / "state.json").read_text())
+            tracked = state_data[entry.server_relative_url]
+            assert tracked["status"] == "downloading"
+            assert tracked["local_path"] == entry.name
+
+            resp = MagicMock()
+            resp.status_code = 200
+            resp.iter_content = MagicMock(return_value=iter([b"A" * 24]))
+            resp.raise_for_status = MagicMock()
+            return resp
+
+        session = MagicMock()
+        session.get = MagicMock(side_effect=mock_get)
+
+        completed, failed = download_all(
+            session, entries, tmp_path, site_url, workers=1, flat=True
+        )
+
+        assert len(completed) == 1
+        assert len(failed) == 0
+        assert json.loads((tmp_path / "state.json").read_text())[entry.server_relative_url][
+            "local_path"
+        ] == entry.name

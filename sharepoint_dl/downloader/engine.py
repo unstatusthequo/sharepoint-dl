@@ -214,8 +214,9 @@ def download_all(
 
         file_entry = file_map[url]
         dest_path = _local_path(dest_dir, file_entry, flat=flat)
+        local_path = dest_path.relative_to(dest_dir).as_posix()
 
-        state.set_status(url, FileStatus.DOWNLOADING)
+        state.set_status(url, FileStatus.DOWNLOADING, local_path=local_path)
 
         # Set up progress for this worker
         if progress is not None and worker_tasks:
