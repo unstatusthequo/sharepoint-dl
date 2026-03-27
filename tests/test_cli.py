@@ -176,7 +176,7 @@ class TestDownloadConfirmation:
     def test_yes_skips_prompt(
         self, mock_load, mock_validate, mock_enum, mock_progress, mock_dl
     ):
-        """--yes flag skips the confirmation prompt."""
+        """--yes flag skips the confirmation prompt but still shows scope."""
         mock_load.return_value = MagicMock()
         mock_validate.return_value = True
         mock_enum.return_value = [
@@ -194,6 +194,9 @@ class TestDownloadConfirmation:
         )
 
         assert result.exit_code == 0
+        assert "Download 1 file" in result.output
+        assert "1.0 KB" in result.output
+        assert "to /tmp/dest?" in result.output
 
 
 class TestDownloadExitCode:

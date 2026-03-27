@@ -232,11 +232,11 @@ def download(
     # 5. Confirmation prompt
     total_size = sum(f.size_bytes for f in files)
     count = len(files)
+    console.print(
+        f"\nDownload [bold]{count} file{'s' if count != 1 else ''}[/bold] "
+        f"({_format_size(total_size)}) to [bold]{dest}[/bold]?"
+    )
     if not yes:
-        console.print(
-            f"\nDownload [bold]{count} file{'s' if count != 1 else ''}[/bold] "
-            f"({_format_size(total_size)}) to [bold]{dest}[/bold]?"
-        )
         if not typer.confirm("Proceed?", default=True):
             console.print("[yellow]Aborted.[/yellow]")
             raise typer.Exit(code=0)
