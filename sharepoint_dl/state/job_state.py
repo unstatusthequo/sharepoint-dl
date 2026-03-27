@@ -71,6 +71,7 @@ class JobState:
                         "size_bytes": f.size_bytes,
                         "folder_path": f.folder_path,
                         "status": FileStatus.PENDING,
+                        "local_path": None,
                         "sha256": None,
                         "error": None,
                         "downloaded_at": None,
@@ -123,28 +124,42 @@ class JobState:
             dest_dir: The root download destination directory.
         """
         with self._lock:
-            for key, entry in self._data.items():
-                if entry["status"] == FileStatus.DOWNLOADING:
-                    # Reconstruct local path from folder_path and name
-                    folder = entry.get("folder_path", "")
-                    name = entry["name"]
-                    # Strip the common prefix to get relative folder
-                    # folder_path is like /sites/shared/Images/custodian1
-                    # We need to find the part after the root folder
-                    parts = folder.strip("/").split("/")
-                    # Skip site-level path components (sites/shared/Images)
-                    # Use everything after the root to build local dir
-                    # For cleanup, search for the .part file by name pattern
-                    self._find_and_delete_part(dest_dir, name)
-                    entry["status"] = FileStatus.PENDING
+            for entry in self._data.values():
+                if entry["status"] != FileStatus.DOWNLOADING:
+                    continue
+
+                part_path = self._resolve_interrupted_part_path(dest_dir, entry)
+                if part_path is not None:
+                    part_path.unlink(missing_ok=True)
+
+                entry["status"] = FileStatus.PENDING
             self._save()
 
     @staticmethod
-    def _find_and_delete_part(dest_dir: Path, filename: str) -> None:
-        """Find and delete .part file for a given filename under dest_dir."""
-        part_name = filename + ".part"
-        for part_file in dest_dir.rglob(part_name):
-            part_file.unlink(missing_ok=True)
+    def _resolve_interrupted_part_path(dest_dir: Path, entry: dict) -> Path | None:
+        """Resolve the exact .part path for one interrupted entry."""
+        local_path = entry.get("local_path")
+        if local_path:
+            local = Path(local_path)
+            if local.is_absolute() or ".." in local.parts:
+                return None
+            return (dest_dir / local).with_suffix((dest_dir / local).suffix + ".part")
+
+        folder = entry.get("folder_path")
+        name = entry.get("name")
+        if not folder or not name:
+            return None
+
+        parts = Path(folder.strip("/")).parts
+        if len(parts) > 3:
+            relative = Path(*parts[3:])
+        elif len(parts) > 2:
+            relative = Path(parts[-1])
+        else:
+            relative = Path(".")
+
+        local = dest_dir / relative / name
+        return local.with_suffix(local.suffix + ".part")
 
     def all_entries(self) -> dict[str, dict]:
         """Return a shallow copy of all tracked entries keyed by server_relative_url."""

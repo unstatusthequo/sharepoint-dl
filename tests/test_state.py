@@ -93,44 +93,74 @@ class TestResume:
 class TestPartCleanup:
     """cleanup_interrupted() deletes .part files and resets status to pending."""
 
-    def test_cleanup_deletes_part_files(
-        self, tmp_path: Path, file_entries: list[FileEntry]
+    def test_cleanup_deletes_only_tracked_part_file(
+        self, tmp_path: Path
     ):
+        tracked = FileEntry(
+            name="duplicate.bin",
+            server_relative_url="/sites/shared/Images/custodian1/duplicate.bin",
+            size_bytes=10,
+            folder_path="/sites/shared/Images/custodian1",
+        )
+        unrelated = FileEntry(
+            name="duplicate.bin",
+            server_relative_url="/sites/shared/Images/custodian2/duplicate.bin",
+            size_bytes=10,
+            folder_path="/sites/shared/Images/custodian2",
+        )
+
         state = JobState(tmp_path)
-        state.initialize(file_entries)
+        state.initialize([tracked, unrelated])
 
-        # Mark a file as downloading
-        state.set_status(file_entries[0].server_relative_url, FileStatus.DOWNLOADING)
+        tracked_local_path = "custodian1/duplicate.bin"
+        state.set_status(
+            tracked.server_relative_url,
+            FileStatus.DOWNLOADING,
+            local_path=tracked_local_path,
+        )
 
-        # Create the .part file in the expected location
-        part_dir = tmp_path / "custodian1"
-        part_dir.mkdir(parents=True, exist_ok=True)
-        part_file = part_dir / "evidence_001.E01.part"
+        tracked_part = tmp_path / tracked_local_path
+        tracked_part = tracked_part.with_suffix(tracked_part.suffix + ".part")
+        tracked_part.parent.mkdir(parents=True, exist_ok=True)
+        tracked_part.write_bytes(b"partial data")
+
+        unrelated_part = tmp_path / "custodian2" / "duplicate.bin.part"
+        unrelated_part.parent.mkdir(parents=True, exist_ok=True)
+        unrelated_part.write_bytes(b"other partial data")
+
+        state.cleanup_interrupted(tmp_path)
+
+        assert not tracked_part.exists()
+        assert unrelated_part.exists()
+
+    def test_cleanup_handles_flat_output_when_local_path_is_tracked(
+        self, tmp_path: Path
+    ):
+        entry = FileEntry(
+            name="evidence_001.E01",
+            server_relative_url="/sites/shared/Images/custodian1/evidence_001.E01",
+            size_bytes=10,
+            folder_path="/sites/shared/Images/custodian1",
+        )
+
+        state = JobState(tmp_path)
+        state.initialize([entry])
+
+        state.set_status(
+            entry.server_relative_url,
+            FileStatus.DOWNLOADING,
+            local_path=entry.name,
+        )
+
+        part_file = tmp_path / "evidence_001.E01.part"
         part_file.write_bytes(b"partial data")
 
         state.cleanup_interrupted(tmp_path)
 
+        state_entry = state.get_entry(entry.server_relative_url)
+        assert state_entry is not None
+        assert state_entry["status"] == FileStatus.PENDING
         assert not part_file.exists()
-
-    def test_cleanup_resets_status_to_pending(
-        self, tmp_path: Path, file_entries: list[FileEntry]
-    ):
-        state = JobState(tmp_path)
-        state.initialize(file_entries)
-
-        state.set_status(file_entries[0].server_relative_url, FileStatus.DOWNLOADING)
-
-        # Create the .part file
-        part_dir = tmp_path / "custodian1"
-        part_dir.mkdir(parents=True, exist_ok=True)
-        part_file = part_dir / "evidence_001.E01.part"
-        part_file.write_bytes(b"partial data")
-
-        state.cleanup_interrupted(tmp_path)
-
-        entry = state.get_entry(file_entries[0].server_relative_url)
-        assert entry is not None
-        assert entry["status"] == FileStatus.PENDING
 
 
 class TestAtomicWrite:
@@ -202,6 +232,54 @@ class TestInitializeIdempotent:
         assert entry is not None
         assert entry["status"] == FileStatus.COMPLETE
         assert entry["sha256"] == "abc123"
+
+    def test_legacy_downloading_entries_use_exact_fallback_path(
+        self, tmp_path: Path
+    ):
+        tracked = FileEntry(
+            name="duplicate.bin",
+            server_relative_url="/sites/shared/Images/custodian1/duplicate.bin",
+            size_bytes=10,
+            folder_path="/sites/shared/Images/custodian1",
+        )
+        sibling = FileEntry(
+            name="duplicate.bin",
+            server_relative_url="/sites/shared/Images/custodian2/duplicate.bin",
+            size_bytes=10,
+            folder_path="/sites/shared/Images/custodian2",
+        )
+
+        legacy_state = {
+            tracked.server_relative_url: {
+                "name": tracked.name,
+                "size_bytes": tracked.size_bytes,
+                "folder_path": tracked.folder_path,
+                "status": "downloading",
+                "sha256": None,
+                "error": None,
+                "downloaded_at": None,
+            }
+        }
+        (tmp_path / "state.json").write_text(json.dumps(legacy_state))
+
+        state = JobState(tmp_path)
+        state.initialize([tracked, sibling])
+
+        tracked_part = tmp_path / "custodian1" / "duplicate.bin.part"
+        tracked_part.parent.mkdir(parents=True, exist_ok=True)
+        tracked_part.write_bytes(b"partial data")
+
+        sibling_part = tmp_path / "custodian2" / "duplicate.bin.part"
+        sibling_part.parent.mkdir(parents=True, exist_ok=True)
+        sibling_part.write_bytes(b"other partial data")
+
+        state.cleanup_interrupted(tmp_path)
+
+        entry = state.get_entry(tracked.server_relative_url)
+        assert entry is not None
+        assert entry["status"] == FileStatus.PENDING
+        assert not tracked_part.exists()
+        assert sibling_part.exists()
 
 
 class TestFailedFiles:
