@@ -44,12 +44,12 @@ Plans:
   3. If any file fails to download after retries, it appears explicitly in the error summary — the tool never silently proceeds past a failure
   4. Tool exits with a non-zero exit code when any file fails
   5. Per-file and overall progress bars are visible during the download run
-**Plans**: TBD
+**Plans**: 3 plans
 
 Plans:
-- [ ] 02-01: Job state module (state.json, resume logic, atomic writes)
-- [ ] 02-02: Download engine (ThreadPoolExecutor, streaming chunks, incremental SHA-256, tenacity retry, 401/403 halt)
-- [ ] 02-03: Progress and error reporting (rich progress bars, failed-file tracking, end-of-run error summary)
+- [ ] 02-01-PLAN.md — Job state module (atomic persistence, resume logic) + single-file download function (streaming, SHA-256, auth guard, retry)
+- [ ] 02-02-PLAN.md — Concurrent executor (ThreadPoolExecutor, auth halt) + Rich progress + CLI download command + error summary
+- [ ] 02-03-PLAN.md — Manual verification checkpoint (real SharePoint download, resume, progress display)
 
 ### Phase 3: Forensic Deliverables
 **Goal**: User can hand a completed manifest to a third party as proof that every file in the SharePoint folder was downloaded and is intact
