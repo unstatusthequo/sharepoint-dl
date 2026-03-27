@@ -59,11 +59,11 @@ Plans:
   1. After a completed run, a manifest.json exists containing filename, remote path, size, SHA-256 hash, and download timestamp for every downloaded file
   2. The file count in the manifest matches the file count the enumerator reported before downloading began
   3. The SHA-256 hash in the manifest was computed from the streamed bytes during download — no second I/O pass, no server-provided hash accepted
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 03-01: Manifest writer (append-only JSON manifest, SHA-256 from download stream, finalization at run end)
-- [ ] 03-02: Completeness report and CLI polish (expected vs downloaded count, clean end-of-run summary, non-zero exit wiring)
+- [ ] 03-01-PLAN.md — Manifest writer module (JobState accessor, JSON manifest generation with per-file metadata and SHA-256 from state)
+- [ ] 03-02-PLAN.md — Completeness report and CLI integration (expected vs downloaded count, manifest auto-generation, --no-manifest flag)
 
 ## Progress
 
