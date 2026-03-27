@@ -17,7 +17,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 1: Foundation** - Authenticated session + verified complete file enumeration (completed 2026-03-27)
 - [x] **Phase 2: Download Engine** - Streaming, retry, resume, concurrency, and explicit error tracking (completed 2026-03-27)
 - [x] **Phase 3: Forensic Deliverables** - Manifest, completeness report, and CLI polish (completed 2026-03-27)
-- [ ] **Phase 4: Resume Safety and Failure Reporting** - Path-safe resume cleanup, pre-download visibility, and auth-expiry summaries
+- [x] **Phase 4: Resume Safety and Failure Reporting** - Path-safe resume cleanup, pre-download visibility, and auth-expiry summaries (completed 2026-03-27)
 - [ ] **Phase 5: Manifest Path Accuracy** - Manifest local_path matches the real on-disk output path in every download mode
 - [ ] **Phase 6: Audit Evidence Normalization** - Planning artifacts reconciled so milestone re-audit can pass cleanly
 
@@ -122,6 +122,6 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6
 | 1. Foundation | 0/3 | Complete    | 2026-03-27 |
 | 2. Download Engine | 2/3 | Complete    | 2026-03-27 |
 | 3. Forensic Deliverables | 0/2 | Complete    | 2026-03-27 |
-| 4. Resume Safety and Failure Reporting | 0/0 | Planned | - |
+| 4. Resume Safety and Failure Reporting | 2/2 | Complete   | 2026-03-27 |
 | 5. Manifest Path Accuracy | 0/0 | Planned | - |
 | 6. Audit Evidence Normalization | 0/0 | Planned | - |
