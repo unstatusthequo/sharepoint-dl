@@ -79,10 +79,11 @@ Plans:
   1. Interrupted-run cleanup targets the exact tracked `.part` file for each entry, even when two folders contain the same filename
   2. `sharepoint-dl download` prints total file count and total size before transfers begin, including when `--yes` bypasses confirmation
   3. If auth expires during download, the tool still emits a completeness report and explicit failure summary while preserving completed work for resume
-**Plans**: 0 plans
+**Plans**: 2 plans
 
 Plans:
-- [ ] To be planned via `$gsd-plan-phase 04`
+- [x] 04-01-PLAN.md — Path-safe interrupted cleanup + exact local-path state persistence
+- [x] 04-02-PLAN.md — Pre-download scope visibility + auth-expiry reporting tail normalization
 
 ### Phase 5: Manifest Path Accuracy
 **Goal**: Manifest evidence reflects the actual local filesystem path written for every completed file
@@ -107,10 +108,10 @@ Plans:
   1. Phase verification docs distinguish real human verification from "verified by design" accurately
   2. `ROADMAP.md` progress counts match completed plans and the new gap-closure phases
   3. After Phases 4-5 complete, a re-audit can pass without planning-state contradictions
-**Plans**: 0 plans
+**Plans**: 1 plan
 
 Plans:
-- [ ] To be planned via `$gsd-plan-phase 06`
+- [ ] 06-01-PLAN.md — Verification-doc normalization for Phases 1-3 + roadmap plan-count/progress reconciliation
 
 ## Progress
 
@@ -119,9 +120,9 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation | 0/3 | Complete    | 2026-03-27 |
-| 2. Download Engine | 2/3 | Complete    | 2026-03-27 |
-| 3. Forensic Deliverables | 0/2 | Complete    | 2026-03-27 |
+| 1. Foundation | 3/3 | Complete    | 2026-03-27 |
+| 2. Download Engine | 3/3 | Complete    | 2026-03-27 |
+| 3. Forensic Deliverables | 2/2 | Complete    | 2026-03-27 |
 | 4. Resume Safety and Failure Reporting | 2/2 | Complete   | 2026-03-27 |
 | 5. Manifest Path Accuracy | 1/1 | Complete | 2026-03-27 |
-| 6. Audit Evidence Normalization | 0/0 | Planned | - |
+| 6. Audit Evidence Normalization | 0/1 | Planned | - |
