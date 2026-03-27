@@ -1,7 +1,7 @@
 """Tests for sharepoint_dl.cli.main — typer CLI subcommands."""
 
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, call, patch
 
 import pytest
 from typer.testing import CliRunner
@@ -358,3 +358,175 @@ class TestHelpOutput:
         assert "auth" in result.output
         assert "list" in result.output
         assert "download" in result.output
+
+
+# --- Helpers for manifest integration tests ---
+
+def _setup_download_mocks(mock_load, mock_validate, mock_enum, mock_progress, mock_dl, files, completed, failed):
+    """Wire up the standard download command mocks."""
+    mock_load.return_value = MagicMock()
+    mock_validate.return_value = True
+    mock_enum.return_value = files
+    mock_progress_inst = MagicMock()
+    mock_progress_inst.__enter__ = MagicMock(return_value=mock_progress_inst)
+    mock_progress_inst.__exit__ = MagicMock(return_value=False)
+    mock_progress.return_value = mock_progress_inst
+    mock_dl.return_value = (completed, failed)
+
+
+class TestManifestIntegration:
+    """Manifest generation wired into the download command."""
+
+    FILES = [
+        FileEntry(name="f1.dat", server_relative_url="/a/f1.dat", size_bytes=100, folder_path="/a"),
+        FileEntry(name="f2.dat", server_relative_url="/a/f2.dat", size_bytes=200, folder_path="/a"),
+    ]
+    BASE_ARGS = ["download", TEST_URL, "/tmp/dest", "--root-folder", "/sites/shared/Docs", "--yes"]
+
+    @patch("sharepoint_dl.cli.main.generate_manifest")
+    @patch("sharepoint_dl.cli.main.JobState")
+    @patch("sharepoint_dl.cli.main.download_all")
+    @patch("sharepoint_dl.cli.main._make_progress")
+    @patch("sharepoint_dl.cli.main.enumerate_files")
+    @patch("sharepoint_dl.cli.main.validate_session")
+    @patch("sharepoint_dl.cli.main.load_session")
+    def test_generate_manifest_called_after_download(
+        self, mock_load, mock_validate, mock_enum, mock_progress, mock_dl,
+        mock_job_state, mock_gen_manifest,
+    ):
+        """generate_manifest is called with correct args after successful download."""
+        _setup_download_mocks(mock_load, mock_validate, mock_enum, mock_progress, mock_dl,
+                              self.FILES, ["/a/f1.dat", "/a/f2.dat"], [])
+        mock_state_inst = MagicMock()
+        mock_job_state.return_value = mock_state_inst
+        mock_gen_manifest.return_value = Path("/tmp/dest/manifest.json")
+
+        result = runner.invoke(app, self.BASE_ARGS)
+
+        assert result.exit_code == 0
+        mock_gen_manifest.assert_called_once()
+        args = mock_gen_manifest.call_args
+        assert args[0][0] is mock_state_inst  # state
+        assert args[0][1] == Path("/tmp/dest")  # dest_dir
+        assert args[0][2] == TEST_URL  # source_url
+        assert args[0][3] == "/sites/shared/Docs"  # root_folder
+
+    @patch("sharepoint_dl.cli.main.generate_manifest")
+    @patch("sharepoint_dl.cli.main.JobState")
+    @patch("sharepoint_dl.cli.main.download_all")
+    @patch("sharepoint_dl.cli.main._make_progress")
+    @patch("sharepoint_dl.cli.main.enumerate_files")
+    @patch("sharepoint_dl.cli.main.validate_session")
+    @patch("sharepoint_dl.cli.main.load_session")
+    def test_completeness_report_printed(
+        self, mock_load, mock_validate, mock_enum, mock_progress, mock_dl,
+        mock_job_state, mock_gen_manifest,
+    ):
+        """Download prints completeness report with expected/downloaded/failed counts."""
+        _setup_download_mocks(mock_load, mock_validate, mock_enum, mock_progress, mock_dl,
+                              self.FILES, ["/a/f1.dat", "/a/f2.dat"], [])
+        mock_job_state.return_value = MagicMock()
+        mock_gen_manifest.return_value = Path("/tmp/dest/manifest.json")
+
+        result = runner.invoke(app, self.BASE_ARGS)
+
+        assert result.exit_code == 0
+        assert "Expected" in result.output
+        assert "Downloaded" in result.output
+        assert "Failed" in result.output
+        # Verify counts
+        assert "2" in result.output  # expected and downloaded
+
+    @patch("sharepoint_dl.cli.main.generate_manifest")
+    @patch("sharepoint_dl.cli.main.JobState")
+    @patch("sharepoint_dl.cli.main.download_all")
+    @patch("sharepoint_dl.cli.main._make_progress")
+    @patch("sharepoint_dl.cli.main.enumerate_files")
+    @patch("sharepoint_dl.cli.main.validate_session")
+    @patch("sharepoint_dl.cli.main.load_session")
+    def test_manifest_path_printed(
+        self, mock_load, mock_validate, mock_enum, mock_progress, mock_dl,
+        mock_job_state, mock_gen_manifest,
+    ):
+        """Manifest path is printed in the success summary."""
+        _setup_download_mocks(mock_load, mock_validate, mock_enum, mock_progress, mock_dl,
+                              self.FILES, ["/a/f1.dat", "/a/f2.dat"], [])
+        mock_job_state.return_value = MagicMock()
+        mock_gen_manifest.return_value = Path("/tmp/dest/manifest.json")
+
+        result = runner.invoke(app, self.BASE_ARGS)
+
+        assert result.exit_code == 0
+        assert "Manifest written to" in result.output
+        assert "manifest.json" in result.output
+
+    @patch("sharepoint_dl.cli.main.generate_manifest")
+    @patch("sharepoint_dl.cli.main.JobState")
+    @patch("sharepoint_dl.cli.main.download_all")
+    @patch("sharepoint_dl.cli.main._make_progress")
+    @patch("sharepoint_dl.cli.main.enumerate_files")
+    @patch("sharepoint_dl.cli.main.validate_session")
+    @patch("sharepoint_dl.cli.main.load_session")
+    def test_no_manifest_flag_skips_generation(
+        self, mock_load, mock_validate, mock_enum, mock_progress, mock_dl,
+        mock_job_state, mock_gen_manifest,
+    ):
+        """--no-manifest flag skips manifest generation."""
+        _setup_download_mocks(mock_load, mock_validate, mock_enum, mock_progress, mock_dl,
+                              self.FILES, ["/a/f1.dat", "/a/f2.dat"], [])
+        mock_job_state.return_value = MagicMock()
+
+        result = runner.invoke(app, self.BASE_ARGS + ["--no-manifest"])
+
+        assert result.exit_code == 0
+        mock_gen_manifest.assert_not_called()
+        assert "Manifest written to" not in result.output
+
+    @patch("sharepoint_dl.cli.main.generate_manifest")
+    @patch("sharepoint_dl.cli.main.JobState")
+    @patch("sharepoint_dl.cli.main.download_all")
+    @patch("sharepoint_dl.cli.main._make_progress")
+    @patch("sharepoint_dl.cli.main.enumerate_files")
+    @patch("sharepoint_dl.cli.main.validate_session")
+    @patch("sharepoint_dl.cli.main.load_session")
+    def test_completeness_warning_on_failures(
+        self, mock_load, mock_validate, mock_enum, mock_progress, mock_dl,
+        mock_job_state, mock_gen_manifest,
+    ):
+        """When files fail, completeness report includes warning with count."""
+        _setup_download_mocks(mock_load, mock_validate, mock_enum, mock_progress, mock_dl,
+                              self.FILES, ["/a/f1.dat"], [("/a/f2.dat", "Connection reset")])
+        mock_job_state.return_value = MagicMock()
+        mock_gen_manifest.return_value = Path("/tmp/dest/manifest.json")
+
+        result = runner.invoke(app, self.BASE_ARGS)
+
+        # Exit code 1 because of failures
+        assert result.exit_code == 1
+        assert "INCOMPLETE" in result.output
+        assert "1" in result.output  # 1 failed
+        assert "Expected" in result.output
+
+    @patch("sharepoint_dl.cli.main.generate_manifest")
+    @patch("sharepoint_dl.cli.main.JobState")
+    @patch("sharepoint_dl.cli.main.download_all")
+    @patch("sharepoint_dl.cli.main._make_progress")
+    @patch("sharepoint_dl.cli.main.enumerate_files")
+    @patch("sharepoint_dl.cli.main.validate_session")
+    @patch("sharepoint_dl.cli.main.load_session")
+    def test_manifest_generated_even_with_failures(
+        self, mock_load, mock_validate, mock_enum, mock_progress, mock_dl,
+        mock_job_state, mock_gen_manifest,
+    ):
+        """Manifest is still generated even when some files fail."""
+        _setup_download_mocks(mock_load, mock_validate, mock_enum, mock_progress, mock_dl,
+                              self.FILES, ["/a/f1.dat"], [("/a/f2.dat", "Connection reset")])
+        mock_state_inst = MagicMock()
+        mock_job_state.return_value = mock_state_inst
+        mock_gen_manifest.return_value = Path("/tmp/dest/manifest.json")
+
+        result = runner.invoke(app, self.BASE_ARGS)
+
+        # Manifest should still be generated
+        mock_gen_manifest.assert_called_once()
+        assert "Manifest written to" in result.output
