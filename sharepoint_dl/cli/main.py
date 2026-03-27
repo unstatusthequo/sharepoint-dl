@@ -246,6 +246,10 @@ def download(
 
     # 7-8. Download with progress
     start_time = time.time()
+    auth_expired = False
+    completed: list[str] = []
+    failed: list[tuple[str, str]] = []
+    state: JobState | None = None
     try:
         progress = _make_progress()
         with progress:
@@ -259,23 +263,22 @@ def download(
                 flat=flat,
             )
     except AuthExpiredError:
-        console.print(
-            "\n[red]Session expired during download. "
-            "Re-authenticate with 'sharepoint-dl auth <url>' and re-run. "
-            "Completed files will be skipped on resume.[/red]"
-        )
-        raise typer.Exit(code=1)
+        auth_expired = True
+        state = JobState(dest)
+        completed = state.complete_files()
+        failed = state.failed_files()
+    else:
+        state = JobState(dest)
 
     elapsed = time.time() - start_time
 
     # 9. Manifest generation
     manifest_path = None
-    if not no_manifest:
-        state = JobState(dest)
+    if not no_manifest and state is not None:
         manifest_path = generate_manifest(state, dest, url, root_folder)
 
     # 10. Completeness report
-    status_ok = len(failed) == 0
+    status_ok = not auth_expired and len(failed) == 0
     status_text = (
         "[green]COMPLETE[/green]"
         if status_ok
@@ -308,6 +311,20 @@ def download(
         )
         console.print(
             f"[red]{len(failed)} file{'s' if len(failed) != 1 else ''} failed.[/red]"
+        )
+        if auth_expired:
+            console.print(
+                "\n[red]Session expired during download. "
+                "Re-authenticate with 'sharepoint-dl auth <url>' and re-run. "
+                "Completed files will be skipped on resume.[/red]"
+            )
+        raise typer.Exit(code=1)
+
+    if auth_expired:
+        console.print(
+            "\n[red]Session expired during download. "
+            "Re-authenticate with 'sharepoint-dl auth <url>' and re-run. "
+            "Completed files will be skipped on resume.[/red]"
         )
         raise typer.Exit(code=1)
 

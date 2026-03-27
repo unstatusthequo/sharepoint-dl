@@ -1,13 +1,15 @@
 """Tests for sharepoint_dl.cli.main — typer CLI subcommands."""
 
+import json
 from pathlib import Path
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from typer.testing import CliRunner
 
 from sharepoint_dl.cli.main import app
 from sharepoint_dl.enumerator.traversal import AuthExpiredError, FileEntry
+from sharepoint_dl.state.job_state import FileStatus, JobState
 
 runner = CliRunner()
 
@@ -257,6 +259,47 @@ class TestDownloadExitCode:
 class TestErrorSummary:
     """Failed files shown in error summary table."""
 
+    @patch("sharepoint_dl.cli.main.generate_manifest")
+    @patch("sharepoint_dl.cli.main.JobState")
+    @patch("sharepoint_dl.cli.main.download_all")
+    @patch("sharepoint_dl.cli.main._make_progress")
+    @patch("sharepoint_dl.cli.main.enumerate_files")
+    @patch("sharepoint_dl.cli.main.validate_session")
+    @patch("sharepoint_dl.cli.main.load_session")
+    def test_auth_expired_error_table_shows_failures(
+        self, mock_load, mock_validate, mock_enum, mock_progress, mock_dl,
+        mock_job_state, mock_gen_manifest,
+    ):
+        mock_load.return_value = MagicMock()
+        mock_validate.return_value = True
+        mock_enum.return_value = [
+            FileEntry(name="f1.dat", server_relative_url="/a/f1.dat", size_bytes=100, folder_path="/a"),
+            FileEntry(name="f2.dat", server_relative_url="/a/f2.dat", size_bytes=200, folder_path="/a"),
+        ]
+        mock_progress_inst = MagicMock()
+        mock_progress_inst.__enter__ = MagicMock(return_value=mock_progress_inst)
+        mock_progress_inst.__exit__ = MagicMock(return_value=False)
+        mock_progress.return_value = mock_progress_inst
+        mock_dl.side_effect = AuthExpiredError("Session expired")
+
+        mock_state_inst = MagicMock()
+        mock_state_inst.complete_files.return_value = ["/a/f1.dat"]
+        mock_state_inst.failed_files.return_value = [("/a/f2.dat", "auth_expired")]
+        mock_job_state.return_value = mock_state_inst
+        mock_gen_manifest.return_value = Path("/tmp/dest/manifest.json")
+
+        result = runner.invoke(
+            app,
+            ["download", TEST_URL, "/tmp/dest", "--root-folder", "/sites/shared/Docs", "--yes"],
+        )
+
+        assert result.exit_code == 1
+        assert "Completeness Report" in result.output
+        assert "Failed Downloads" in result.output
+        assert "f2.dat" in result.output or "/a/f2.dat" in result.output
+        assert "auth_expired" in result.output
+        assert "re-authenticate" in result.output.lower() or "Re-authenticate" in result.output
+
     @patch("sharepoint_dl.cli.main.download_all")
     @patch("sharepoint_dl.cli.main._make_progress")
     @patch("sharepoint_dl.cli.main.enumerate_files")
@@ -289,18 +332,22 @@ class TestErrorSummary:
 class TestDownloadAuthExpired:
     """AuthExpiredError during download prints re-auth message."""
 
+    @patch("sharepoint_dl.cli.main.generate_manifest")
+    @patch("sharepoint_dl.cli.main.JobState")
     @patch("sharepoint_dl.cli.main.download_all")
     @patch("sharepoint_dl.cli.main._make_progress")
     @patch("sharepoint_dl.cli.main.enumerate_files")
     @patch("sharepoint_dl.cli.main.validate_session")
     @patch("sharepoint_dl.cli.main.load_session")
     def test_auth_expired_message(
-        self, mock_load, mock_validate, mock_enum, mock_progress, mock_dl
+        self, mock_load, mock_validate, mock_enum, mock_progress, mock_dl,
+        mock_job_state, mock_gen_manifest,
     ):
         mock_load.return_value = MagicMock()
         mock_validate.return_value = True
         mock_enum.return_value = [
             FileEntry(name="f1.dat", server_relative_url="/a/f1.dat", size_bytes=100, folder_path="/a"),
+            FileEntry(name="f2.dat", server_relative_url="/a/f2.dat", size_bytes=200, folder_path="/a"),
         ]
         mock_progress_inst = MagicMock()
         mock_progress_inst.__enter__ = MagicMock(return_value=mock_progress_inst)
@@ -308,13 +355,87 @@ class TestDownloadAuthExpired:
         mock_progress.return_value = mock_progress_inst
         mock_dl.side_effect = AuthExpiredError("Session expired")
 
+        mock_state_inst = MagicMock()
+        mock_state_inst.complete_files.return_value = ["/a/f1.dat"]
+        mock_state_inst.failed_files.return_value = [("/a/f2.dat", "auth_expired")]
+        mock_job_state.return_value = mock_state_inst
+        mock_gen_manifest.return_value = Path("/tmp/dest/manifest.json")
+
         result = runner.invoke(
             app,
             ["download", TEST_URL, "/tmp/dest", "--root-folder", "/sites/shared/Docs", "--yes"],
         )
 
         assert result.exit_code == 1
+        assert "Completeness Report" in result.output
+        assert "Failed Downloads" in result.output
+        assert "f2.dat" in result.output or "/a/f2.dat" in result.output
         assert "re-authenticate" in result.output.lower() or "Re-authenticate" in result.output
+
+
+class TestDownloadAuthExpiredState:
+    """Auth-expired runs can recover reporting from persisted state."""
+
+    @patch("sharepoint_dl.cli.main.download_all")
+    @patch("sharepoint_dl.cli.main._make_progress")
+    @patch("sharepoint_dl.cli.main.enumerate_files")
+    @patch("sharepoint_dl.cli.main.validate_session")
+    @patch("sharepoint_dl.cli.main.load_session")
+    def test_auth_expired_uses_persisted_state_for_manifest(
+        self, mock_load, mock_validate, mock_enum, mock_progress, mock_dl, tmp_path: Path
+    ):
+        dest = tmp_path / "dest"
+        dest.mkdir()
+
+        mock_load.return_value = MagicMock()
+        mock_validate.return_value = True
+        mock_enum.return_value = [
+            FileEntry(name="f1.dat", server_relative_url="/a/f1.dat", size_bytes=100, folder_path="/a"),
+            FileEntry(name="f2.dat", server_relative_url="/a/f2.dat", size_bytes=200, folder_path="/a"),
+        ]
+        mock_progress_inst = MagicMock()
+        mock_progress_inst.__enter__ = MagicMock(return_value=mock_progress_inst)
+        mock_progress_inst.__exit__ = MagicMock(return_value=False)
+        mock_progress.return_value = mock_progress_inst
+        mock_dl.side_effect = AuthExpiredError("Session expired")
+
+        state = JobState(dest)
+        state.initialize(mock_enum.return_value)
+        state.set_status(
+            "/a/f1.dat",
+            FileStatus.COMPLETE,
+            sha256="abc123",
+            downloaded_at="2026-03-27T12:00:00Z",
+        )
+        state.set_status("/a/f2.dat", FileStatus.FAILED, error="auth_expired")
+
+        result = runner.invoke(
+            app,
+            [
+                "download",
+                TEST_URL,
+                str(dest),
+                "--root-folder",
+                "/sites/shared/Docs",
+                "--yes",
+            ],
+        )
+
+        assert result.exit_code == 1
+        assert "Completeness Report" in result.output
+        assert "Downloaded: 1" in result.output
+        assert "Failed:     1" in result.output
+        assert "Failed Downloads" in result.output
+        assert "f2.dat" in result.output
+        assert "auth_expired" in result.output
+        assert "re-authenticate" in result.output.lower() or "Re-authenticate" in result.output
+        manifest_path = dest / "manifest.json"
+        assert manifest_path.exists()
+        manifest = json.loads(manifest_path.read_text())
+        assert manifest["metadata"]["total_files"] == 1
+        assert len(manifest["files"]) == 1
+        assert len(manifest["failed"]) == 1
+        assert manifest["failed"][0]["error"] == "auth_expired"
 
 
 class TestDownloadCompleteSummary:
