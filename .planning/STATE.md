@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: executing
-stopped_at: Completed 03-01-PLAN.md
-last_updated: "2026-03-27T21:19:52.715Z"
-last_activity: 2026-03-27 — Completed 03-01 manifest writer
+status: completed
+stopped_at: Completed 03-02-PLAN.md
+last_updated: "2026-03-27T21:24:14.033Z"
+last_activity: 2026-03-27 — Completed 03-02 CLI manifest integration
 progress:
   total_phases: 3
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 8
-  completed_plans: 7
-  percent: 88
+  completed_plans: 8
+  percent: 100
 ---
 
 # Project State
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-03-27)
 ## Current Position
 
 Phase: 3 of 3 (Verification)
-Plan: 1 of 2 in current phase
-Status: Executing
-Last activity: 2026-03-27 — Completed 03-01 manifest writer
+Plan: 2 of 2 in current phase
+Status: Complete
+Last activity: 2026-03-27 — Completed 03-02 CLI manifest integration
 
-Progress: [█████████░] 88%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -52,6 +52,7 @@ Progress: [█████████░] 88%
 
 *Updated after each plan completion*
 | Phase 03 P01 | 2min | 1 tasks | 4 files |
+| Phase 03 P02 | 2min | 1 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -74,6 +75,8 @@ Recent decisions affecting current work:
 - [02-02]: Round-robin worker_id for Rich Progress task reuse across files
 - [02-02]: typer.confirm with --yes bypass for scripted download usage
 - [Phase 03-01]: SHA-256 values read from state.json only -- no re-computation from disk files
+- [Phase 03]: JobState reloaded from dest dir after download_all -- reads state.json written by engine
+- [Phase 03]: Manifest generated even when files fail -- partial manifests more useful for forensics
 
 ### Pending Todos
 
@@ -86,6 +89,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-27T21:19:52.714Z
-Stopped at: Completed 03-01-PLAN.md
+Last session: 2026-03-27T21:24:14.031Z
+Stopped at: Completed 03-02-PLAN.md
 Resume file: None
