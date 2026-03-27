@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: completed
-stopped_at: Completed 03-02-PLAN.md
-last_updated: "2026-03-27T22:27:23.755Z"
-last_activity: 2026-03-27 — Completed 03-02 CLI manifest integration
+stopped_at: Completed 04-02-PLAN.md
+last_updated: "2026-03-27T22:36:56Z"
+last_activity: 2026-03-27 — Completed 04-02 resume safety and failure reporting
 progress:
   total_phases: 6
   completed_phases: 4
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-27)
 
 **Core value:** Every file in the shared folder is downloaded, and the user can prove it — no silent failures, no missing files, no guesswork.
-**Current focus:** Phase 3 — Verification
+**Current focus:** Phase 4 — Resume Safety and Failure Reporting
 
 ## Current Position
 
-Phase: 3 of 3 (Verification)
+Phase: 4 of 6 (Resume Safety and Failure Reporting)
 Plan: 2 of 2 in current phase
 Status: Complete
-Last activity: 2026-03-27 — Completed 03-02 CLI manifest integration
+Last activity: 2026-03-27 — Completed 04-02 resume safety and failure reporting
 
 Progress: [██████████] 100%
 
@@ -77,6 +77,8 @@ Recent decisions affecting current work:
 - [Phase 03-01]: SHA-256 values read from state.json only -- no re-computation from disk files
 - [Phase 03]: JobState reloaded from dest dir after download_all -- reads state.json written by engine
 - [Phase 03]: Manifest generated even when files fail -- partial manifests more useful for forensics
+- [04-02]: Download scope is printed before confirmation so scripted and interactive runs share the same preflight visibility
+- [04-02]: Auth-expired runs reload persisted JobState before summary/reporting so the CLI does not abort before evidence is written
 
 ### Pending Todos
 
@@ -89,6 +91,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-27T21:24:14.031Z
-Stopped at: Completed 03-02-PLAN.md
+Last session: 2026-03-27T22:36:56Z
+Stopped at: Completed 04-02-PLAN.md
 Resume file: None

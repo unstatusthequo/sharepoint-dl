@@ -17,7 +17,7 @@ Requirements for initial release. Each maps to roadmap phases.
 
 - [x] **ENUM-01**: Tool recursively traverses all folders/subfolders via SharePoint REST API
 - [x] **ENUM-02**: Tool paginates folder listings with `$skiptoken` to capture all files (no silent truncation)
-- [ ] **ENUM-03**: Tool displays total file count found before downloading begins
+- [x] **ENUM-03**: Tool displays total file count found before downloading begins
 
 ### Download Engine
 
@@ -37,7 +37,7 @@ Requirements for initial release. Each maps to roadmap phases.
 
 - [x] **CLI-01**: User can specify download destination folder at launch
 - [x] **CLI-02**: Tool shows per-file and overall progress bars during download
-- [ ] **CLI-03**: Tool shows clear error summary at end of run with file-level detail
+- [x] **CLI-03**: Tool shows clear error summary at end of run with file-level detail
 
 ## v2 Requirements
 
@@ -87,7 +87,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | AUTH-03 | Phase 1 | Complete |
 | ENUM-01 | Phase 1 | Complete |
 | ENUM-02 | Phase 1 | Complete |
-| ENUM-03 | Phase 4 | Pending |
+| ENUM-03 | Phase 4 | Complete |
 | CLI-01 | Phase 1 | Complete |
 | DWNL-01 | Phase 2 | Complete |
 | DWNL-02 | Phase 4 | Pending |
@@ -95,7 +95,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | DWNL-04 | Phase 2 | Complete |
 | DWNL-05 | Phase 2 | Complete |
 | CLI-02 | Phase 2 | Complete |
-| CLI-03 | Phase 4 | Pending |
+| CLI-03 | Phase 4 | Complete |
 | VRFY-01 | Phase 3 | Complete |
 | VRFY-02 | Phase 5 | Pending |
 | VRFY-03 | Phase 3 | Complete |
