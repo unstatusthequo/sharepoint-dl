@@ -15,6 +15,8 @@ from sharepoint_dl.auth.browser import harvest_session
 from sharepoint_dl.auth.session import load_session, validate_session
 from sharepoint_dl.downloader.engine import _make_progress, download_all
 from sharepoint_dl.enumerator.traversal import AuthExpiredError, enumerate_files
+from sharepoint_dl.manifest import generate_manifest
+from sharepoint_dl.state.job_state import JobState
 
 app = typer.Typer(
     no_args_is_help=True,
@@ -181,6 +183,11 @@ def download(
         "-y",
         help="Skip confirmation prompt",
     ),
+    no_manifest: bool = typer.Option(
+        False,
+        "--no-manifest",
+        help="Skip manifest.json generation (for testing/debugging only)",
+    ),
 ) -> None:
     """Download all files from a SharePoint folder."""
     # 1. Load session
@@ -255,7 +262,30 @@ def download(
 
     elapsed = time.time() - start_time
 
-    # 10. Error summary
+    # 9. Manifest generation
+    manifest_path = None
+    if not no_manifest:
+        state = JobState(dest)
+        manifest_path = generate_manifest(state, dest, url, root_folder)
+
+    # 10. Completeness report
+    status_ok = len(failed) == 0
+    status_text = (
+        "[green]COMPLETE[/green]"
+        if status_ok
+        else f"[red]INCOMPLETE — {len(failed)} file{'s' if len(failed) != 1 else ''} failed[/red]"
+    )
+    console.print("\nCompleteness Report")
+    console.print("-------------------")
+    console.print(f"Expected:   {len(files)}")
+    console.print(f"Downloaded: {len(completed)}")
+    console.print(f"Failed:     {len(failed)}")
+    console.print(f"Status:     {status_text}")
+
+    if manifest_path is not None:
+        console.print(f"\nManifest written to: {manifest_path}")
+
+    # 11. Error summary
     if failed:
         error_table = Table(title="Failed Downloads", style="red")
         error_table.add_column("File", style="red")
@@ -275,7 +305,7 @@ def download(
         )
         raise typer.Exit(code=1)
 
-    # 9. Success summary
+    # 12. Success summary
     avg_speed = total_size / elapsed if elapsed > 0 else 0
     console.print(
         f"\n[green]Downloaded {len(completed)} file{'s' if len(completed) != 1 else ''} "
