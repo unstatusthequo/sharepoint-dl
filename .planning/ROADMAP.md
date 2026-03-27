@@ -18,7 +18,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 2: Download Engine** - Streaming, retry, resume, concurrency, and explicit error tracking (completed 2026-03-27)
 - [x] **Phase 3: Forensic Deliverables** - Manifest, completeness report, and CLI polish (completed 2026-03-27)
 - [x] **Phase 4: Resume Safety and Failure Reporting** - Path-safe resume cleanup, pre-download visibility, and auth-expiry summaries (completed 2026-03-27)
-- [ ] **Phase 5: Manifest Path Accuracy** - Manifest local_path matches the real on-disk output path in every download mode
+- [x] **Phase 5: Manifest Path Accuracy** - Manifest local_path matches the real on-disk output path in every download mode (completed 2026-03-27)
 - [ ] **Phase 6: Audit Evidence Normalization** - Planning artifacts reconciled so milestone re-audit can pass cleanly
 
 ## Phase Details
@@ -93,10 +93,10 @@ Plans:
   1. `manifest.json` stores the actual on-disk path for each completed file, not the remote SharePoint folder path
   2. Manifest path evidence is correct for both preserved-folder downloads and `--flat` downloads
   3. Manifest generation and downloader/state reuse one source of truth for local file placement
-**Plans**: 0 plans
+**Plans**: 1 plan
 
 Plans:
-- [ ] To be planned via `$gsd-plan-phase 05`
+- [x] 05-01-PLAN.md — Persisted local_path manifest evidence + flat-mode CLI integration + legacy fallback validation
 
 ### Phase 6: Audit Evidence Normalization
 **Goal**: Planning artifacts match the real verification evidence so milestone re-audit reflects the actual project state
@@ -123,5 +123,5 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6
 | 2. Download Engine | 2/3 | Complete    | 2026-03-27 |
 | 3. Forensic Deliverables | 0/2 | Complete    | 2026-03-27 |
 | 4. Resume Safety and Failure Reporting | 2/2 | Complete   | 2026-03-27 |
-| 5. Manifest Path Accuracy | 0/0 | Planned | - |
+| 5. Manifest Path Accuracy | 1/1 | Complete | 2026-03-27 |
 | 6. Audit Evidence Normalization | 0/0 | Planned | - |
