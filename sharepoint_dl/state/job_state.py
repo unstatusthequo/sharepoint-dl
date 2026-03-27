@@ -146,6 +146,11 @@ class JobState:
         for part_file in dest_dir.rglob(part_name):
             part_file.unlink(missing_ok=True)
 
+    def all_entries(self) -> dict[str, dict]:
+        """Return a shallow copy of all tracked entries keyed by server_relative_url."""
+        with self._lock:
+            return dict(self._data)
+
     def get_entry(self, server_relative_url: str) -> dict | None:
         """Return the state dict for a file, or None if not tracked."""
         with self._lock:
