@@ -9,8 +9,8 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Authentication
 
-- [ ] **AUTH-01**: User can authenticate via Playwright browser session capture (login once, cookies reused)
-- [ ] **AUTH-02**: Tool validates session is active before starting any downloads
+- [x] **AUTH-01**: User can authenticate via Playwright browser session capture (login once, cookies reused)
+- [x] **AUTH-02**: Tool validates session is active before starting any downloads
 - [ ] **AUTH-03**: Tool detects expired session mid-run and prompts user to re-authenticate
 
 ### Enumeration
@@ -82,8 +82,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| AUTH-01 | Phase 1 | Pending |
-| AUTH-02 | Phase 1 | Pending |
+| AUTH-01 | Phase 1 | Complete |
+| AUTH-02 | Phase 1 | Complete |
 | AUTH-03 | Phase 1 | Pending |
 | ENUM-01 | Phase 1 | Pending |
 | ENUM-02 | Phase 1 | Pending |
