@@ -27,12 +27,12 @@ Decimal phases appear between their surrounding integers in numeric order.
   2. Tool reports total file count for the target folder, and that count matches the count visible in the SharePoint browser UI
   3. Tool detects an expired session and prompts the user to re-authenticate rather than proceeding silently
   4. User can specify the download destination folder at launch via CLI argument
-**Plans**: TBD
+**Plans**: 3 plans
 
 Plans:
-- [ ] 01-01: Project scaffold (uv, module structure, ruff, pytest, typer CLI skeleton)
-- [ ] 01-02: Auth module (Playwright session capture, session validation, expiry detection)
-- [ ] 01-03: Enumerator module (recursive folder traversal, $skiptoken pagination, file count display)
+- [ ] 01-01-PLAN.md — Project scaffold + auth module (session harvest, persistence, validation)
+- [ ] 01-02-PLAN.md — Enumerator module (recursive traversal, pagination) + CLI wiring (typer subcommands, rich output)
+- [ ] 01-03-PLAN.md — Manual verification checkpoint (real auth flow + file count accuracy vs browser UI)
 
 ### Phase 2: Download Engine
 **Goal**: Every file downloads correctly — 2GB files stream without memory issues, interrupted runs resume cleanly, and no file is ever silently skipped
