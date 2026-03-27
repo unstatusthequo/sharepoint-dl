@@ -82,29 +82,29 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| AUTH-01 | — | Pending |
-| AUTH-02 | — | Pending |
-| AUTH-03 | — | Pending |
-| ENUM-01 | — | Pending |
-| ENUM-02 | — | Pending |
-| ENUM-03 | — | Pending |
-| DWNL-01 | — | Pending |
-| DWNL-02 | — | Pending |
-| DWNL-03 | — | Pending |
-| DWNL-04 | — | Pending |
-| DWNL-05 | — | Pending |
-| VRFY-01 | — | Pending |
-| VRFY-02 | — | Pending |
-| VRFY-03 | — | Pending |
-| CLI-01 | — | Pending |
-| CLI-02 | — | Pending |
-| CLI-03 | — | Pending |
+| AUTH-01 | Phase 1 | Pending |
+| AUTH-02 | Phase 1 | Pending |
+| AUTH-03 | Phase 1 | Pending |
+| ENUM-01 | Phase 1 | Pending |
+| ENUM-02 | Phase 1 | Pending |
+| ENUM-03 | Phase 1 | Pending |
+| CLI-01 | Phase 1 | Pending |
+| DWNL-01 | Phase 2 | Pending |
+| DWNL-02 | Phase 2 | Pending |
+| DWNL-03 | Phase 2 | Pending |
+| DWNL-04 | Phase 2 | Pending |
+| DWNL-05 | Phase 2 | Pending |
+| CLI-02 | Phase 2 | Pending |
+| CLI-03 | Phase 2 | Pending |
+| VRFY-01 | Phase 3 | Pending |
+| VRFY-02 | Phase 3 | Pending |
+| VRFY-03 | Phase 3 | Pending |
 
 **Coverage:**
 - v1 requirements: 17 total
-- Mapped to phases: 0
-- Unmapped: 17 ⚠️
+- Mapped to phases: 17
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-27*
-*Last updated: 2026-03-27 after initial definition*
+*Last updated: 2026-03-27 — traceability mapped after roadmap creation*
