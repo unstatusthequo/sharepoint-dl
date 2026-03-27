@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from collections import defaultdict
 from pathlib import Path
 from urllib.parse import urlparse
@@ -12,6 +13,7 @@ from rich.table import Table
 
 from sharepoint_dl.auth.browser import harvest_session
 from sharepoint_dl.auth.session import load_session, validate_session
+from sharepoint_dl.downloader.engine import _make_progress, download_all
 from sharepoint_dl.enumerator.traversal import AuthExpiredError, enumerate_files
 
 app = typer.Typer(
@@ -159,7 +161,124 @@ def list_files(
 def download(
     url: str = typer.Argument(..., help="SharePoint folder URL"),
     dest: Path = typer.Argument(..., help="Local download destination"),
+    root_folder: str = typer.Option(
+        ...,
+        "--root-folder",
+        "-r",
+        help="Server-relative path to the folder to download",
+    ),
+    workers: int = typer.Option(
+        3,
+        "--workers",
+        "-w",
+        min=1,
+        max=8,
+        help="Number of concurrent download workers (default: 3)",
+    ),
+    yes: bool = typer.Option(
+        False,
+        "--yes",
+        "-y",
+        help="Skip confirmation prompt",
+    ),
 ) -> None:
-    """Download all files from a SharePoint folder. (Coming in Phase 2)"""
-    console.print("[yellow]Download not yet implemented. Coming in Phase 2.[/yellow]")
-    raise typer.Exit(code=1)
+    """Download all files from a SharePoint folder."""
+    # 1. Load session
+    session = load_session(url)
+    if session is None:
+        console.print(
+            "[red]No active session. Run 'sharepoint-dl auth <url>' first.[/red]"
+        )
+        raise typer.Exit(code=1)
+
+    # 2. Parse URL
+    site_url, _auto_path = _parse_sharepoint_url(url)
+    server_relative_path = root_folder
+
+    # 3. Validate session
+    if not validate_session(session, site_url):
+        console.print(
+            "[red]Session expired. Run 'sharepoint-dl auth <url>' to re-authenticate.[/red]"
+        )
+        raise typer.Exit(code=1)
+
+    # 4. Enumerate files
+    try:
+        with console.status("[bold green]Scanning folders...", spinner="dots"):
+            files = enumerate_files(session, site_url, server_relative_path)
+    except AuthExpiredError:
+        console.print(
+            "[red]Session expired during enumeration. "
+            "Run 'sharepoint-dl auth <url>' to re-authenticate.[/red]"
+        )
+        raise typer.Exit(code=1)
+
+    if not files:
+        console.print("[yellow]No files found in the specified folder.[/yellow]")
+        raise typer.Exit(code=0)
+
+    # 5. Confirmation prompt
+    total_size = sum(f.size_bytes for f in files)
+    count = len(files)
+    if not yes:
+        console.print(
+            f"\nDownload [bold]{count} file{'s' if count != 1 else ''}[/bold] "
+            f"({_format_size(total_size)}) to [bold]{dest}[/bold]?"
+        )
+        if not typer.confirm("Proceed?", default=True):
+            console.print("[yellow]Aborted.[/yellow]")
+            raise typer.Exit(code=0)
+
+    # 6. Create destination directory
+    dest.mkdir(parents=True, exist_ok=True)
+
+    # 7-8. Download with progress
+    start_time = time.time()
+    try:
+        progress = _make_progress()
+        with progress:
+            completed, failed = download_all(
+                session,
+                files,
+                dest,
+                site_url,
+                workers=workers,
+                progress=progress,
+            )
+    except AuthExpiredError:
+        console.print(
+            "\n[red]Session expired during download. "
+            "Re-authenticate with 'sharepoint-dl auth <url>' and re-run. "
+            "Completed files will be skipped on resume.[/red]"
+        )
+        raise typer.Exit(code=1)
+
+    elapsed = time.time() - start_time
+
+    # 10. Error summary
+    if failed:
+        error_table = Table(title="Failed Downloads", style="red")
+        error_table.add_column("File", style="red")
+        error_table.add_column("Error", style="red")
+        for file_url, reason in failed:
+            # Show just the filename from the URL
+            fname = file_url.rsplit("/", 1)[-1] if "/" in file_url else file_url
+            error_table.add_row(fname, reason)
+        console.print(error_table)
+
+        console.print(
+            f"\n[green]{len(completed)} file{'s' if len(completed) != 1 else ''} "
+            f"downloaded successfully.[/green]"
+        )
+        console.print(
+            f"[red]{len(failed)} file{'s' if len(failed) != 1 else ''} failed.[/red]"
+        )
+        raise typer.Exit(code=1)
+
+    # 9. Success summary
+    avg_speed = total_size / elapsed if elapsed > 0 else 0
+    console.print(
+        f"\n[green]Downloaded {len(completed)} file{'s' if len(completed) != 1 else ''} "
+        f"({_format_size(total_size)}) in {elapsed:.1f}s "
+        f"({_format_size(int(avg_speed))}/s)[/green]"
+    )
