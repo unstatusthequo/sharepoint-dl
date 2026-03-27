@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Phase 2 context gathered
-last_updated: "2026-03-27T20:00:04.728Z"
-last_activity: 2026-03-27 — Completed 01-02 enumerator and CLI module
+stopped_at: Completed 02-01-PLAN.md
+last_updated: "2026-03-27T20:36:54.173Z"
+last_activity: 2026-03-27 — Completed 02-01 state + download engine
 progress:
   total_phases: 3
   completed_phases: 1
-  total_plans: 3
-  completed_plans: 3
+  total_plans: 6
+  completed_plans: 4
   percent: 67
 ---
 
@@ -21,29 +21,30 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-27)
 
 **Core value:** Every file in the shared folder is downloaded, and the user can prove it — no silent failures, no missing files, no guesswork.
-**Current focus:** Phase 1 — Foundation
+**Current focus:** Phase 2 — Download Engine
 
 ## Current Position
 
-Phase: 1 of 3 (Foundation)
-Plan: 2 of 3 in current phase
+Phase: 2 of 3 (Download Engine)
+Plan: 1 of 2 in current phase
 Status: Executing
-Last activity: 2026-03-27 — Completed 01-02 enumerator and CLI module
+Last activity: 2026-03-27 — Completed 02-01 state + download engine
 
 Progress: [███████░░░] 67%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 2
-- Average duration: 2.5min
-- Total execution time: 5min
+- Total plans completed: 4
+- Average duration: 2.3min
+- Total execution time: 9min
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 01-foundation | 2/3 | 5min | 2.5min |
+| 02-download-engine | 1/2 | 4min | 4min |
 
 **Recent Trend:**
 - Last 5 plans: —
@@ -65,6 +66,9 @@ Recent decisions affecting current work:
 - [01-02]: Explicit stack (not recursion) for folder traversal to avoid stack overflow
 - [01-02]: AuthExpiredError raised before raise_for_status so tenacity does not retry auth failures
 - [01-02]: Added --root-folder CLI option for sharing links that cannot be auto-parsed
+- [02-01]: Used reraise=True on tenacity retry so callers see HTTPError not RetryError
+- [02-01]: WaitRetryAfter inherits tenacity.wait.wait_base (not top-level tenacity.wait_base)
+- [02-01]: cleanup_interrupted uses rglob to find .part files by name (handles unknown folder depth)
 
 ### Pending Todos
 
@@ -77,6 +81,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-27T20:00:04.725Z
-Stopped at: Phase 2 context gathered
-Resume file: .planning/phases/02-download-engine/02-CONTEXT.md
+Last session: 2026-03-27T20:36:54.171Z
+Stopped at: Completed 02-01-PLAN.md
+Resume file: None

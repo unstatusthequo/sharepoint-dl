@@ -73,5 +73,5 @@ Phases execute in numeric order: 1 → 2 → 3
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Foundation | 0/3 | Complete    | 2026-03-27 |
-| 2. Download Engine | 0/3 | Not started | - |
+| 2. Download Engine | 1/3 | In Progress|  |
 | 3. Forensic Deliverables | 0/2 | Not started | - |

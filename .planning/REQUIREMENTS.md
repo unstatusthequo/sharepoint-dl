@@ -21,9 +21,9 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Download Engine
 
-- [ ] **DWNL-01**: Tool streams downloads in chunks (8MB) to handle files up to 2GB without memory issues
-- [ ] **DWNL-02**: Tool resumes interrupted runs — skips completed files, retries failures
-- [ ] **DWNL-03**: Tool tracks all failures explicitly — no file is ever silently skipped
+- [x] **DWNL-01**: Tool streams downloads in chunks (8MB) to handle files up to 2GB without memory issues
+- [x] **DWNL-02**: Tool resumes interrupted runs — skips completed files, retries failures
+- [x] **DWNL-03**: Tool tracks all failures explicitly — no file is ever silently skipped
 - [ ] **DWNL-04**: Tool exits with non-zero code if any file fails to download
 - [ ] **DWNL-05**: Tool downloads 2-4 files concurrently for speed
 
@@ -89,9 +89,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | ENUM-02 | Phase 1 | Complete |
 | ENUM-03 | Phase 1 | Complete |
 | CLI-01 | Phase 1 | Complete |
-| DWNL-01 | Phase 2 | Pending |
-| DWNL-02 | Phase 2 | Pending |
-| DWNL-03 | Phase 2 | Pending |
+| DWNL-01 | Phase 2 | Complete |
+| DWNL-02 | Phase 2 | Complete |
+| DWNL-03 | Phase 2 | Complete |
 | DWNL-04 | Phase 2 | Pending |
 | DWNL-05 | Phase 2 | Pending |
 | CLI-02 | Phase 2 | Pending |
