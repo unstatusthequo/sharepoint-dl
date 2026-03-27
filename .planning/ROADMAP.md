@@ -14,7 +14,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Foundation** - Authenticated session + verified complete file enumeration (completed 2026-03-27)
 - [x] **Phase 2: Download Engine** - Streaming, retry, resume, concurrency, and explicit error tracking (completed 2026-03-27)
-- [ ] **Phase 3: Forensic Deliverables** - Manifest, completeness report, and CLI polish
+- [x] **Phase 3: Forensic Deliverables** - Manifest, completeness report, and CLI polish (completed 2026-03-27)
 
 ## Phase Details
 
@@ -74,4 +74,4 @@ Phases execute in numeric order: 1 → 2 → 3
 |-------|----------------|--------|-----------|
 | 1. Foundation | 0/3 | Complete    | 2026-03-27 |
 | 2. Download Engine | 2/3 | Complete    | 2026-03-27 |
-| 3. Forensic Deliverables | 0/2 | Not started | - |
+| 3. Forensic Deliverables | 0/2 | Complete    | 2026-03-27 |
