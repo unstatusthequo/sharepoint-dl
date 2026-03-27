@@ -46,20 +46,31 @@ def _parse_sharepoint_url(url: str) -> tuple[str, str]:
         and will be empty (use --root-folder instead).
     """
     parsed = urlparse(url)
-    site_url = f"{parsed.scheme}://{parsed.netloc}"
-
-    # Try to extract site path (e.g. /sites/shared)
+    base = f"{parsed.scheme}://{parsed.netloc}"
     path_parts = parsed.path.strip("/").split("/")
 
-    # Common patterns: /sites/{name}/... or /personal/{name}/...
+    # SharePoint sharing links use /:f:/s/SiteName/... or /:f:/r/sites/SiteName/...
+    # The /s/ is shorthand for /sites/, /p/ for /personal/
+    shorthand_map = {"s": "sites", "p": "personal"}
+
+    # Detect sharing link pattern: /:type:/shorthand/SiteName/...
+    if len(path_parts) >= 3 and path_parts[0].startswith(":") and path_parts[0].endswith(":"):
+        shorthand = path_parts[1]
+        site_name = path_parts[2]
+        prefix = shorthand_map.get(shorthand, shorthand)
+        site_url = f"{base}/{prefix}/{site_name}"
+        return site_url, ""
+
+    # Standard patterns: /sites/{name}/... or /personal/{name}/...
     if len(path_parts) >= 2 and path_parts[0] in ("sites", "personal"):
-        site_url = f"{site_url}/{path_parts[0]}/{path_parts[1]}"
+        site_url = f"{base}/{path_parts[0]}/{path_parts[1]}"
         remaining = "/".join(path_parts[2:])
         if remaining:
             server_relative_path = f"/{'/'.join(path_parts)}"
         else:
             server_relative_path = ""
     else:
+        site_url = base
         server_relative_path = parsed.path if parsed.path != "/" else ""
 
     return site_url, server_relative_path
@@ -85,10 +96,11 @@ def auth(
 def list_files(
     url: str = typer.Argument(..., help="SharePoint folder URL"),
     root_folder: str = typer.Option(
-        "",
-        "--root-folder",
-        help="Server-relative path to the root folder (e.g. /sites/shared/Shared Documents/Images). "
-        "Required if the URL is a sharing link that cannot be parsed automatically.",
+        ...,
+        "--root-folder", "-r",
+        help="Server-relative path to the folder to enumerate "
+        "(e.g. '/sites/CyberSecurityTeam/Shared Documents/Images'). "
+        "REQUIRED — prevents accidentally scanning the entire site.",
     ),
 ) -> None:
     """List all files in a SharePoint folder with summary table."""
@@ -99,19 +111,12 @@ def list_files(
         )
         raise typer.Exit(code=1)
 
-    site_url, auto_path = _parse_sharepoint_url(url)
-    server_relative_path = root_folder or auto_path
+    site_url, _auto_path = _parse_sharepoint_url(url)
+    server_relative_path = root_folder
 
     if not validate_session(session, site_url):
         console.print(
             "[red]Session expired. Run 'sharepoint-dl auth <url>' to re-authenticate.[/red]"
-        )
-        raise typer.Exit(code=1)
-
-    if not server_relative_path:
-        console.print(
-            "[red]Cannot determine folder path from URL. "
-            "Please specify --root-folder.[/red]"
         )
         raise typer.Exit(code=1)
 
