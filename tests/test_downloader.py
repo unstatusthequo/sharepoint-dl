@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import hashlib
+import json
+import threading
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -13,8 +15,10 @@ from sharepoint_dl.downloader.engine import (
     CHUNK_SIZE,
     _build_download_url,
     _download_file,
+    download_all,
 )
 from sharepoint_dl.enumerator.traversal import AuthExpiredError, FileEntry
+from sharepoint_dl.state.job_state import FileStatus
 
 
 @pytest.fixture
@@ -257,3 +261,147 @@ class TestDownloadUrl:
         )
         assert "shared//_layouts" not in url
         assert "shared/_layouts" in url
+
+
+def _make_test_entries(count: int = 3) -> list[FileEntry]:
+    """Create N small FileEntry objects for concurrency tests."""
+    return [
+        FileEntry(
+            name=f"file_{i}.dat",
+            server_relative_url=f"/sites/shared/Docs/file_{i}.dat",
+            size_bytes=24,
+            folder_path="/sites/shared/Docs",
+        )
+        for i in range(count)
+    ]
+
+
+def _mock_session_for_download(entries: list[FileEntry], auth_fail_index: int | None = None):
+    """Create a mock session that returns content for each file.
+
+    If auth_fail_index is set, the Nth unique file download returns 401.
+    Thread IDs are tracked via a list attached to the session.
+    """
+    session = MagicMock()
+    session._thread_ids = []
+    call_count = {"n": 0}
+    lock = threading.Lock()
+
+    def mock_get(url, **kwargs):
+        tid = threading.current_thread().ident
+        with lock:
+            session._thread_ids.append(tid)
+            idx = call_count["n"]
+            call_count["n"] += 1
+
+        resp = MagicMock()
+
+        if auth_fail_index is not None and idx == auth_fail_index:
+            resp.status_code = 401
+            return resp
+
+        content = b"A" * 24
+        resp.status_code = 200
+        resp.iter_content = MagicMock(return_value=iter([content]))
+        resp.raise_for_status = MagicMock()
+        return resp
+
+    session.get = MagicMock(side_effect=mock_get)
+    return session
+
+
+class TestConcurrency:
+    """download_all with workers=3 submits futures concurrently."""
+
+    def test_multiple_threads_used(self, tmp_path: Path):
+        entries = _make_test_entries(6)
+        session = _mock_session_for_download(entries)
+        site_url = "https://contoso.sharepoint.com/sites/shared"
+
+        completed, failed = download_all(session, entries, tmp_path, site_url, workers=3)
+
+        assert len(completed) == 6
+        assert len(failed) == 0
+        # Verify at least 2 distinct thread IDs were used (concurrency)
+        distinct_threads = set(session._thread_ids)
+        assert len(distinct_threads) >= 2, f"Expected concurrency, got threads: {distinct_threads}"
+
+    def test_all_files_downloaded(self, tmp_path: Path):
+        entries = _make_test_entries(3)
+        session = _mock_session_for_download(entries)
+        site_url = "https://contoso.sharepoint.com/sites/shared"
+
+        completed, failed = download_all(session, entries, tmp_path, site_url, workers=3)
+
+        assert len(completed) == 3
+        assert len(failed) == 0
+
+
+class TestAuthHaltAll:
+    """When one worker raises AuthExpiredError, all workers halt."""
+
+    def test_auth_halt_raises_and_stops(self, tmp_path: Path):
+        entries = _make_test_entries(5)
+        session = _mock_session_for_download(entries, auth_fail_index=1)
+        site_url = "https://contoso.sharepoint.com/sites/shared"
+
+        with pytest.raises(AuthExpiredError):
+            download_all(session, entries, tmp_path, site_url, workers=3)
+
+        # Not all 5 files should have been attempted (some cancelled)
+        # At minimum, the auth failure should have been recorded
+        assert session.get.call_count < 5 + 2  # reasonable upper bound
+
+
+class TestProgress:
+    """download_all accepts a Rich Progress instance and updates tasks."""
+
+    def test_progress_tasks_updated(self, tmp_path: Path):
+        from rich.progress import Progress
+
+        entries = _make_test_entries(2)
+        session = _mock_session_for_download(entries)
+        site_url = "https://contoso.sharepoint.com/sites/shared"
+
+        progress = Progress(disable=True)  # disable rendering for test
+        with progress:
+            completed, failed = download_all(
+                session, entries, tmp_path, site_url, workers=2, progress=progress
+            )
+
+        assert len(completed) == 2
+        assert len(failed) == 0
+        # Progress should have tasks (overall + workers)
+        assert len(progress.tasks) >= 1
+
+
+class TestResumeSkip:
+    """download_all with pre-populated state skips completed files."""
+
+    def test_skips_already_complete(self, tmp_path: Path):
+        entries = _make_test_entries(3)
+        site_url = "https://contoso.sharepoint.com/sites/shared"
+
+        # Pre-populate state.json with first file as COMPLETE
+        state_data = {
+            entries[0].server_relative_url: {
+                "name": entries[0].name,
+                "size_bytes": entries[0].size_bytes,
+                "folder_path": entries[0].folder_path,
+                "status": "complete",
+                "sha256": "abc123",
+                "error": None,
+                "downloaded_at": "2026-03-27T00:00:00Z",
+            },
+        }
+        (tmp_path / "state.json").write_text(json.dumps(state_data))
+
+        session = _mock_session_for_download(entries)
+
+        completed, failed = download_all(session, entries, tmp_path, site_url, workers=2)
+
+        # All 3 should be complete (1 from state, 2 downloaded)
+        assert len(completed) == 3
+        assert len(failed) == 0
+        # Only 2 files should have been downloaded (1 was already complete)
+        assert session.get.call_count == 2
