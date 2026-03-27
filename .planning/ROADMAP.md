@@ -2,7 +2,9 @@
 
 ## Overview
 
-Three phases, each a hard dependency on the previous. Phase 1 proves the authenticated session and file enumeration are correct before any download code is written — this is the forensic constraint, not a preference. Phase 2 builds the download engine with all reliability mechanisms from day one (streaming, retry, resume, explicit error tracking). Phase 3 produces the forensic deliverables: the manifest, completeness report, and CLI polish. The tool cannot be trusted until all three phases are complete.
+Three phases, each a hard dependency on the previous. Phase 1 proves the authenticated session and file enumeration are correct before any download code is written - this is the forensic constraint, not a preference. Phase 2 builds the download engine with all reliability mechanisms from day one (streaming, retry, resume, explicit error tracking). Phase 3 produces the forensic deliverables: the manifest, completeness report, and CLI polish. The tool cannot be trusted until all three phases are complete.
+
+The v1.0 milestone audit found four blocker gaps and one planning normalization pass still needed before archival. Phases 4-6 close those gaps in dependency order: first harden resume/reporting behavior, then correct manifest evidence, then normalize the planning artifacts so a re-audit can pass cleanly.
 
 ## Phases
 
@@ -15,6 +17,9 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 1: Foundation** - Authenticated session + verified complete file enumeration (completed 2026-03-27)
 - [x] **Phase 2: Download Engine** - Streaming, retry, resume, concurrency, and explicit error tracking (completed 2026-03-27)
 - [x] **Phase 3: Forensic Deliverables** - Manifest, completeness report, and CLI polish (completed 2026-03-27)
+- [ ] **Phase 4: Resume Safety and Failure Reporting** - Path-safe resume cleanup, pre-download visibility, and auth-expiry summaries
+- [ ] **Phase 5: Manifest Path Accuracy** - Manifest local_path matches the real on-disk output path in every download mode
+- [ ] **Phase 6: Audit Evidence Normalization** - Planning artifacts reconciled so milestone re-audit can pass cleanly
 
 ## Phase Details
 
@@ -65,13 +70,58 @@ Plans:
 - [ ] 03-01-PLAN.md — Manifest writer module (JobState accessor, JSON manifest generation with per-file metadata and SHA-256 from state)
 - [ ] 03-02-PLAN.md — Completeness report and CLI integration (expected vs downloaded count, manifest auto-generation, --no-manifest flag)
 
+### Phase 4: Resume Safety and Failure Reporting
+**Goal**: Resume logic is path-safe, download runs always show pre-transfer scope, and auth-expiry failures still produce explicit end-of-run reporting
+**Depends on**: Phase 3
+**Requirements**: DWNL-02, ENUM-03, CLI-03
+**Gap Closure**: Closes the v1.0 audit gaps around duplicate filename resume cleanup, `download --yes` visibility, and auth-expiry reporting
+**Success Criteria** (what must be TRUE):
+  1. Interrupted-run cleanup targets the exact tracked `.part` file for each entry, even when two folders contain the same filename
+  2. `sharepoint-dl download` prints total file count and total size before transfers begin, including when `--yes` bypasses confirmation
+  3. If auth expires during download, the tool still emits a completeness report and explicit failure summary while preserving completed work for resume
+**Plans**: 0 plans
+
+Plans:
+- [ ] To be planned via `$gsd-plan-phase 04`
+
+### Phase 5: Manifest Path Accuracy
+**Goal**: Manifest evidence reflects the actual local filesystem path written for every completed file
+**Depends on**: Phase 4
+**Requirements**: VRFY-02
+**Gap Closure**: Closes the v1.0 audit gap where `manifest.json` reports SharePoint-style paths instead of the real local output path
+**Success Criteria** (what must be TRUE):
+  1. `manifest.json` stores the actual on-disk path for each completed file, not the remote SharePoint folder path
+  2. Manifest path evidence is correct for both preserved-folder downloads and `--flat` downloads
+  3. Manifest generation and downloader/state reuse one source of truth for local file placement
+**Plans**: 0 plans
+
+Plans:
+- [ ] To be planned via `$gsd-plan-phase 05`
+
+### Phase 6: Audit Evidence Normalization
+**Goal**: Planning artifacts match the real verification evidence so milestone re-audit reflects the actual project state
+**Depends on**: Phases 4 and 5
+**Requirements**: None - planning normalization
+**Gap Closure**: Closes the v1.0 audit tech debt around stale roadmap counts and inconsistent human-verification claims
+**Success Criteria** (what must be TRUE):
+  1. Phase verification docs distinguish real human verification from "verified by design" accurately
+  2. `ROADMAP.md` progress counts match completed plans and the new gap-closure phases
+  3. After Phases 4-5 complete, a re-audit can pass without planning-state contradictions
+**Plans**: 0 plans
+
+Plans:
+- [ ] To be planned via `$gsd-plan-phase 06`
+
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 → 2 → 3
+Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Foundation | 0/3 | Complete    | 2026-03-27 |
 | 2. Download Engine | 2/3 | Complete    | 2026-03-27 |
 | 3. Forensic Deliverables | 0/2 | Complete    | 2026-03-27 |
+| 4. Resume Safety and Failure Reporting | 0/0 | Planned | - |
+| 5. Manifest Path Accuracy | 0/0 | Planned | - |
+| 6. Audit Evidence Normalization | 0/0 | Planned | - |

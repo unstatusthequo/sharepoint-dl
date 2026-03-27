@@ -17,12 +17,12 @@ Requirements for initial release. Each maps to roadmap phases.
 
 - [x] **ENUM-01**: Tool recursively traverses all folders/subfolders via SharePoint REST API
 - [x] **ENUM-02**: Tool paginates folder listings with `$skiptoken` to capture all files (no silent truncation)
-- [x] **ENUM-03**: Tool displays total file count found before downloading begins
+- [ ] **ENUM-03**: Tool displays total file count found before downloading begins
 
 ### Download Engine
 
 - [x] **DWNL-01**: Tool streams downloads in chunks (8MB) to handle files up to 2GB without memory issues
-- [x] **DWNL-02**: Tool resumes interrupted runs — skips completed files, retries failures
+- [ ] **DWNL-02**: Tool resumes interrupted runs — skips completed files, retries failures
 - [x] **DWNL-03**: Tool tracks all failures explicitly — no file is ever silently skipped
 - [x] **DWNL-04**: Tool exits with non-zero code if any file fails to download
 - [x] **DWNL-05**: Tool downloads 2-4 files concurrently for speed
@@ -30,14 +30,14 @@ Requirements for initial release. Each maps to roadmap phases.
 ### Verification & Manifest
 
 - [x] **VRFY-01**: Tool computes SHA-256 hash during download (single I/O pass, no re-read)
-- [x] **VRFY-02**: Tool generates JSON manifest with file path, size, hash, and download timestamp per file
+- [ ] **VRFY-02**: Tool generates JSON manifest with file path, size, hash, and download timestamp per file
 - [x] **VRFY-03**: Tool produces completeness report comparing expected vs downloaded file count
 
 ### CLI & UX
 
 - [x] **CLI-01**: User can specify download destination folder at launch
 - [x] **CLI-02**: Tool shows per-file and overall progress bars during download
-- [x] **CLI-03**: Tool shows clear error summary at end of run with file-level detail
+- [ ] **CLI-03**: Tool shows clear error summary at end of run with file-level detail
 
 ## v2 Requirements
 
@@ -87,24 +87,26 @@ Which phases cover which requirements. Updated during roadmap creation.
 | AUTH-03 | Phase 1 | Complete |
 | ENUM-01 | Phase 1 | Complete |
 | ENUM-02 | Phase 1 | Complete |
-| ENUM-03 | Phase 1 | Complete |
+| ENUM-03 | Phase 4 | Pending |
 | CLI-01 | Phase 1 | Complete |
 | DWNL-01 | Phase 2 | Complete |
-| DWNL-02 | Phase 2 | Complete |
+| DWNL-02 | Phase 4 | Pending |
 | DWNL-03 | Phase 2 | Complete |
 | DWNL-04 | Phase 2 | Complete |
 | DWNL-05 | Phase 2 | Complete |
 | CLI-02 | Phase 2 | Complete |
-| CLI-03 | Phase 2 | Complete |
+| CLI-03 | Phase 4 | Pending |
 | VRFY-01 | Phase 3 | Complete |
-| VRFY-02 | Phase 3 | Complete |
+| VRFY-02 | Phase 5 | Pending |
 | VRFY-03 | Phase 3 | Complete |
 
 **Coverage:**
 - v1 requirements: 17 total
 - Mapped to phases: 17
+- Fully satisfied: 13
+- Pending gap closure: 4
 - Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-27*
-*Last updated: 2026-03-27 — traceability mapped after roadmap creation*
+*Last updated: 2026-03-27 — gap-closure phases 4-6 added after milestone audit*
