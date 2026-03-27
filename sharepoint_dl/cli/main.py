@@ -183,6 +183,11 @@ def download(
         "-y",
         help="Skip confirmation prompt",
     ),
+    flat: bool = typer.Option(
+        False,
+        "--flat",
+        help="Download all files directly into dest folder (no subdirectories)",
+    ),
     no_manifest: bool = typer.Option(
         False,
         "--no-manifest",
@@ -251,6 +256,7 @@ def download(
                 site_url,
                 workers=workers,
                 progress=progress,
+                flat=flat,
             )
     except AuthExpiredError:
         console.print(

@@ -161,6 +161,7 @@ def download_all(
     site_url: str,
     workers: int = 3,
     progress: Progress | None = None,
+    flat: bool = False,
 ) -> tuple[list[str], list[tuple[str, str]]]:
     """Orchestrate concurrent file downloads with progress and auth halt.
 
@@ -212,7 +213,7 @@ def download_all(
             return
 
         file_entry = file_map[url]
-        dest_path = _local_path(dest_dir, file_entry)
+        dest_path = _local_path(dest_dir, file_entry, flat=flat)
 
         state.set_status(url, FileStatus.DOWNLOADING)
 
@@ -273,19 +274,20 @@ def download_all(
     return state.complete_files(), state.failed_files()
 
 
-def _local_path(dest_dir: Path, file_entry: FileEntry) -> Path:
-    """Construct local path preserving folder structure relative to root folder.
-
-    Strips the common site prefix from folder_path to create subdirectories
-    under dest_dir.
+def _local_path(dest_dir: Path, file_entry: FileEntry, flat: bool = False) -> Path:
+    """Construct local path for a downloaded file.
 
     Args:
         dest_dir: Root download destination directory.
         file_entry: FileEntry with folder_path and name.
+        flat: If True, put all files directly in dest_dir (no subdirectories).
 
     Returns:
         Path to the local file destination.
     """
+    if flat:
+        return dest_dir / file_entry.name
+
     # folder_path is like /sites/shared/Images/custodian1
     # Strip leading slash and take the last component(s) as relative path
     parts = file_entry.folder_path.strip("/").split("/")
