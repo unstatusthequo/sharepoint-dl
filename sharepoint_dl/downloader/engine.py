@@ -1,14 +1,26 @@
-"""Single-file streaming download with retry, auth guard, and incremental SHA-256."""
+"""Download engine: single-file streaming + concurrent executor with Rich progress."""
 
 from __future__ import annotations
 
 import hashlib
 import logging
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable
 from urllib.parse import quote
 
 import requests
+from rich.progress import (
+    BarColumn,
+    DownloadColumn,
+    Progress,
+    SpinnerColumn,
+    TextColumn,
+    TimeElapsedColumn,
+    TransferSpeedColumn,
+)
 from tenacity import (
     RetryCallState,
     before_sleep_log,
@@ -19,6 +31,7 @@ from tenacity import (
 from tenacity.wait import wait_base
 
 from sharepoint_dl.enumerator.traversal import AuthExpiredError, FileEntry
+from sharepoint_dl.state.job_state import FileStatus, JobState
 
 if TYPE_CHECKING:
     pass
@@ -127,6 +140,137 @@ def _download_file(
 
     part_path.rename(dest_path)
     return sha256.hexdigest()
+
+
+def _make_progress() -> Progress:
+    """Create a Rich Progress instance with download-appropriate columns."""
+    return Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(bar_width=None),
+        DownloadColumn(),
+        TransferSpeedColumn(),
+        TimeElapsedColumn(),
+    )
+
+
+def download_all(
+    session: requests.Session,
+    files: list[FileEntry],
+    dest_dir: Path,
+    site_url: str,
+    workers: int = 3,
+    progress: Progress | None = None,
+) -> tuple[list[str], list[tuple[str, str]]]:
+    """Orchestrate concurrent file downloads with progress and auth halt.
+
+    Creates a JobState, initializes it with files, cleans up interrupted
+    downloads, then uses ThreadPoolExecutor to download pending files
+    concurrently. If any worker encounters an auth error (401/403), all
+    workers are halted via a threading.Event.
+
+    Args:
+        session: Authenticated requests.Session.
+        files: List of FileEntry objects to download.
+        dest_dir: Root download destination directory.
+        site_url: SharePoint site URL.
+        workers: Number of concurrent download workers (default 3).
+        progress: Optional Rich Progress instance for visual feedback.
+
+    Returns:
+        Tuple of (completed_urls, failed_entries) where failed_entries
+        is a list of (server_relative_url, error_reason) tuples.
+
+    Raises:
+        AuthExpiredError: If any worker encounters 401/403.
+    """
+    state = JobState(dest_dir)
+    state.initialize(files)
+    state.cleanup_interrupted(dest_dir)
+
+    file_map = {f.server_relative_url: f for f in files}
+    pending = state.pending_files()
+
+    if not pending:
+        return state.complete_files(), state.failed_files()
+
+    auth_halt = threading.Event()
+    auth_error: list[AuthExpiredError] = []
+
+    # Set up progress tasks
+    overall_task = None
+    worker_tasks: list = []
+    if progress is not None:
+        total_size = sum(file_map[url].size_bytes for url in pending if url in file_map)
+        overall_task = progress.add_task("Overall", total=total_size)
+        for i in range(workers):
+            wt = progress.add_task(f"[worker {i}]", total=0, visible=False)
+            worker_tasks.append(wt)
+
+    def worker(url: str, worker_id: int) -> None:
+        if auth_halt.is_set():
+            return
+
+        file_entry = file_map[url]
+        dest_path = _local_path(dest_dir, file_entry)
+
+        state.set_status(url, FileStatus.DOWNLOADING)
+
+        # Set up progress for this worker
+        if progress is not None and worker_tasks:
+            wt = worker_tasks[worker_id % len(worker_tasks)]
+            progress.update(wt, description=file_entry.name, total=file_entry.size_bytes, completed=0, visible=True)
+
+            def on_chunk(n: int) -> None:
+                progress.update(wt, advance=n)
+                if overall_task is not None:
+                    progress.update(overall_task, advance=n)
+        else:
+            on_chunk = None  # type: ignore[assignment]
+
+        try:
+            sha = _download_file(session, file_entry, dest_path, site_url, on_chunk=on_chunk)
+            state.set_status(
+                url,
+                FileStatus.COMPLETE,
+                sha256=sha,
+                downloaded_at=datetime.now(timezone.utc).isoformat(),
+            )
+            if progress is not None and worker_tasks:
+                wt = worker_tasks[worker_id % len(worker_tasks)]
+                progress.update(wt, visible=False)
+        except AuthExpiredError as e:
+            auth_halt.set()
+            auth_error.append(e)
+            state.set_status(url, FileStatus.FAILED, error="auth_expired")
+            raise
+        except Exception as e:
+            state.set_status(url, FileStatus.FAILED, error=str(e))
+            raise
+
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        futures = {}
+        for i, url in enumerate(pending):
+            if auth_halt.is_set():
+                break
+            future = executor.submit(worker, url, i % workers)
+            futures[future] = url
+
+        for future in as_completed(futures):
+            try:
+                future.result()
+            except AuthExpiredError:
+                # Cancel remaining futures
+                for f in futures:
+                    f.cancel()
+                break
+            except Exception:
+                pass  # Already recorded in state
+
+    if auth_error:
+        raise auth_error[0]
+
+    return state.complete_files(), state.failed_files()
 
 
 def _local_path(dest_dir: Path, file_entry: FileEntry) -> Path:
