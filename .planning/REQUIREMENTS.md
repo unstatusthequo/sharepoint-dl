@@ -1,0 +1,110 @@
+# Requirements: SharePoint Bulk Downloader
+
+**Defined:** 2026-03-27
+**Core Value:** Every file in the shared folder is downloaded, and the user can prove it — no silent failures, no missing files, no guesswork.
+
+## v1 Requirements
+
+Requirements for initial release. Each maps to roadmap phases.
+
+### Authentication
+
+- [ ] **AUTH-01**: User can authenticate via Playwright browser session capture (login once, cookies reused)
+- [ ] **AUTH-02**: Tool validates session is active before starting any downloads
+- [ ] **AUTH-03**: Tool detects expired session mid-run and prompts user to re-authenticate
+
+### Enumeration
+
+- [ ] **ENUM-01**: Tool recursively traverses all folders/subfolders via SharePoint REST API
+- [ ] **ENUM-02**: Tool paginates folder listings with `$skiptoken` to capture all files (no silent truncation)
+- [ ] **ENUM-03**: Tool displays total file count found before downloading begins
+
+### Download Engine
+
+- [ ] **DWNL-01**: Tool streams downloads in chunks (8MB) to handle files up to 2GB without memory issues
+- [ ] **DWNL-02**: Tool resumes interrupted runs — skips completed files, retries failures
+- [ ] **DWNL-03**: Tool tracks all failures explicitly — no file is ever silently skipped
+- [ ] **DWNL-04**: Tool exits with non-zero code if any file fails to download
+- [ ] **DWNL-05**: Tool downloads 2-4 files concurrently for speed
+
+### Verification & Manifest
+
+- [ ] **VRFY-01**: Tool computes SHA-256 hash during download (single I/O pass, no re-read)
+- [ ] **VRFY-02**: Tool generates JSON manifest with file path, size, hash, and download timestamp per file
+- [ ] **VRFY-03**: Tool produces completeness report comparing expected vs downloaded file count
+
+### CLI & UX
+
+- [ ] **CLI-01**: User can specify download destination folder at launch
+- [ ] **CLI-02**: Tool shows per-file and overall progress bars during download
+- [ ] **CLI-03**: Tool shows clear error summary at end of run with file-level detail
+
+## v2 Requirements
+
+Deferred to future release. Tracked but not in current roadmap.
+
+### Enumeration
+
+- **ENUM-04**: Dry-run mode — enumerate and report without downloading
+
+### Authentication
+
+- **AUTH-04**: Swappable auth layer supporting both legacy OTP and Entra B2B flows
+- **AUTH-05**: Headless mode after initial browser login
+
+### CLI & UX
+
+- **CLI-04**: Config file for saved SharePoint URLs and custodian paths
+- **CLI-05**: Multi-custodian batch mode (queue multiple custodians in one run)
+
+### Download Engine
+
+- **DWNL-06**: Bandwidth throttling option
+
+### Verification & Manifest
+
+- **VRFY-04**: NIST/SWGDE-aligned forensic report format
+
+## Out of Scope
+
+| Feature | Reason |
+|---------|--------|
+| Upload capability | Download-only tool |
+| File preview or browsing UI | Just download what's there; use browser for browsing |
+| Ongoing sync | Full download tool, not a sync client |
+| Windows/Linux support | Mac-only for v1; cross-platform later |
+| Microsoft Graph API auth | Guest OTP/B2B access doesn't support app registration |
+| Real-time notifications | Not needed for batch download tool |
+
+## Traceability
+
+Which phases cover which requirements. Updated during roadmap creation.
+
+| Requirement | Phase | Status |
+|-------------|-------|--------|
+| AUTH-01 | — | Pending |
+| AUTH-02 | — | Pending |
+| AUTH-03 | — | Pending |
+| ENUM-01 | — | Pending |
+| ENUM-02 | — | Pending |
+| ENUM-03 | — | Pending |
+| DWNL-01 | — | Pending |
+| DWNL-02 | — | Pending |
+| DWNL-03 | — | Pending |
+| DWNL-04 | — | Pending |
+| DWNL-05 | — | Pending |
+| VRFY-01 | — | Pending |
+| VRFY-02 | — | Pending |
+| VRFY-03 | — | Pending |
+| CLI-01 | — | Pending |
+| CLI-02 | — | Pending |
+| CLI-03 | — | Pending |
+
+**Coverage:**
+- v1 requirements: 17 total
+- Mapped to phases: 0
+- Unmapped: 17 ⚠️
+
+---
+*Requirements defined: 2026-03-27*
+*Last updated: 2026-03-27 after initial definition*
