@@ -13,7 +13,7 @@ Three phases, each a hard dependency on the previous. Phase 1 proves the authent
 Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Foundation** - Authenticated session + verified complete file enumeration (completed 2026-03-27)
-- [ ] **Phase 2: Download Engine** - Streaming, retry, resume, concurrency, and explicit error tracking
+- [x] **Phase 2: Download Engine** - Streaming, retry, resume, concurrency, and explicit error tracking (completed 2026-03-27)
 - [ ] **Phase 3: Forensic Deliverables** - Manifest, completeness report, and CLI polish
 
 ## Phase Details
@@ -73,5 +73,5 @@ Phases execute in numeric order: 1 → 2 → 3
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Foundation | 0/3 | Complete    | 2026-03-27 |
-| 2. Download Engine | 2/3 | In Progress|  |
+| 2. Download Engine | 2/3 | Complete    | 2026-03-27 |
 | 3. Forensic Deliverables | 0/2 | Not started | - |
