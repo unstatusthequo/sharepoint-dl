@@ -24,8 +24,8 @@ Requirements for initial release. Each maps to roadmap phases.
 - [x] **DWNL-01**: Tool streams downloads in chunks (8MB) to handle files up to 2GB without memory issues
 - [x] **DWNL-02**: Tool resumes interrupted runs — skips completed files, retries failures
 - [x] **DWNL-03**: Tool tracks all failures explicitly — no file is ever silently skipped
-- [ ] **DWNL-04**: Tool exits with non-zero code if any file fails to download
-- [ ] **DWNL-05**: Tool downloads 2-4 files concurrently for speed
+- [x] **DWNL-04**: Tool exits with non-zero code if any file fails to download
+- [x] **DWNL-05**: Tool downloads 2-4 files concurrently for speed
 
 ### Verification & Manifest
 
@@ -36,8 +36,8 @@ Requirements for initial release. Each maps to roadmap phases.
 ### CLI & UX
 
 - [x] **CLI-01**: User can specify download destination folder at launch
-- [ ] **CLI-02**: Tool shows per-file and overall progress bars during download
-- [ ] **CLI-03**: Tool shows clear error summary at end of run with file-level detail
+- [x] **CLI-02**: Tool shows per-file and overall progress bars during download
+- [x] **CLI-03**: Tool shows clear error summary at end of run with file-level detail
 
 ## v2 Requirements
 
@@ -92,10 +92,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 | DWNL-01 | Phase 2 | Complete |
 | DWNL-02 | Phase 2 | Complete |
 | DWNL-03 | Phase 2 | Complete |
-| DWNL-04 | Phase 2 | Pending |
-| DWNL-05 | Phase 2 | Pending |
-| CLI-02 | Phase 2 | Pending |
-| CLI-03 | Phase 2 | Pending |
+| DWNL-04 | Phase 2 | Complete |
+| DWNL-05 | Phase 2 | Complete |
+| CLI-02 | Phase 2 | Complete |
+| CLI-03 | Phase 2 | Complete |
 | VRFY-01 | Phase 3 | Pending |
 | VRFY-02 | Phase 3 | Pending |
 | VRFY-03 | Phase 3 | Pending |

@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 02-01-PLAN.md
-last_updated: "2026-03-27T20:36:54.173Z"
-last_activity: 2026-03-27 — Completed 02-01 state + download engine
+stopped_at: Completed 02-02-PLAN.md
+last_updated: "2026-03-27T20:41:20Z"
+last_activity: 2026-03-27 — Completed 02-02 concurrent executor + CLI download
 progress:
   total_phases: 3
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 6
-  completed_plans: 4
-  percent: 67
+  completed_plans: 5
+  percent: 83
 ---
 
 # Project State
@@ -21,30 +21,30 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-27)
 
 **Core value:** Every file in the shared folder is downloaded, and the user can prove it — no silent failures, no missing files, no guesswork.
-**Current focus:** Phase 2 — Download Engine
+**Current focus:** Phase 3 — Verification
 
 ## Current Position
 
-Phase: 2 of 3 (Download Engine)
-Plan: 1 of 2 in current phase
+Phase: 3 of 3 (Verification)
+Plan: 0 of 1 in current phase
 Status: Executing
-Last activity: 2026-03-27 — Completed 02-01 state + download engine
+Last activity: 2026-03-27 — Completed 02-02 concurrent executor + CLI download
 
-Progress: [███████░░░] 67%
+Progress: [████████░░] 83%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 4
-- Average duration: 2.3min
-- Total execution time: 9min
+- Total plans completed: 5
+- Average duration: 2.6min
+- Total execution time: 13min
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 01-foundation | 2/3 | 5min | 2.5min |
-| 02-download-engine | 1/2 | 4min | 4min |
+| 02-download-engine | 2/2 | 8min | 4min |
 
 **Recent Trend:**
 - Last 5 plans: —
@@ -69,6 +69,9 @@ Recent decisions affecting current work:
 - [02-01]: Used reraise=True on tenacity retry so callers see HTTPError not RetryError
 - [02-01]: WaitRetryAfter inherits tenacity.wait.wait_base (not top-level tenacity.wait_base)
 - [02-01]: cleanup_interrupted uses rglob to find .part files by name (handles unknown folder depth)
+- [02-02]: threading.Event for auth halt — cooperative cancellation lets in-flight downloads finish current chunk
+- [02-02]: Round-robin worker_id for Rich Progress task reuse across files
+- [02-02]: typer.confirm with --yes bypass for scripted download usage
 
 ### Pending Todos
 
@@ -81,6 +84,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-27T20:36:54.171Z
-Stopped at: Completed 02-01-PLAN.md
+Last session: 2026-03-27T20:41:20Z
+Stopped at: Completed 02-02-PLAN.md
 Resume file: None
