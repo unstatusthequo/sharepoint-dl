@@ -1,20 +1,27 @@
-# SharePoint Bulk Downloader
+# SPDL -- SharePoint Bulk Downloader
 
-Reliable bulk download tool for SharePoint shared folders, designed for forensic evidence collection. Authenticates via browser session (email + OTP code), downloads all files with concurrent workers, and produces a verification manifest with SHA-256 hashes to prove completeness.
+Reliable bulk download tool for SharePoint shared folders. Built for forensic evidence collection but works for any SharePoint external sharing link.
+
+Authenticates via browser (email + OTP code), lets you browse and select folders interactively, downloads all files with concurrent workers, and produces a verification manifest with SHA-256 hashes.
 
 ## Features
 
-- **Browser-based auth** -- Playwright opens Chromium, you log in, cookies are captured automatically
-- **Recursive enumeration** -- Walks all folders/subfolders with full pagination (no silent truncation)
+- **Interactive TUI** -- Just run it, paste a link, browse folders, download. No flags to memorize.
+- **Browser-based auth** -- Playwright opens Chromium, you log in, session is cached for reuse
+- **Folder browser** -- Navigate the SharePoint folder tree interactively to pick your target
 - **Streaming downloads** -- 8 MB chunks handle 2 GB+ files without memory issues
 - **SHA-256 hashes** -- Computed during download (single I/O pass, no re-read)
-- **Resume on re-run** -- Completed files are skipped, only failures retried
-- **Forensic manifest** -- JSON file with per-file path, size, hash, and timestamp
-- **Completeness report** -- Expected vs downloaded vs failed count
-- **Concurrent downloads** -- 1-8 parallel workers (default 3)
-- **Never silently skips** -- Every failure is tracked and reported
+- **Resume on re-run** -- Completed files are skipped, failed files auto-retried (2 extra rounds)
+- **Forensic manifest** -- `manifest.json` with per-file path, size, hash, and timestamp
+- **Completeness report** -- Expected vs downloaded vs failed count after every run
+- **Concurrent downloads** -- 1-8 parallel workers (default 3) with per-file progress bars
+- **Graceful cancel** -- Ctrl+C saves progress, re-run picks up where you left off
+- **Never silently skips** -- Every failure is tracked, reported, and retried
+- **Cross-platform** -- macOS, Linux, Windows
 
 ## Installation
+
+Requires [uv](https://docs.astral.sh/uv/) (installed automatically by setup scripts) and Python 3.11-3.13.
 
 ### macOS / Linux
 
@@ -22,7 +29,6 @@ Reliable bulk download tool for SharePoint shared folders, designed for forensic
 git clone git@github.com:unstatusthequo/sharepoint-dl.git
 cd sharepoint-dl
 ./setup.sh
-source .venv/bin/activate
 ```
 
 ### Windows (PowerShell)
@@ -31,165 +37,177 @@ source .venv/bin/activate
 git clone git@github.com:unstatusthequo/sharepoint-dl.git
 cd sharepoint-dl
 powershell -ExecutionPolicy Bypass -File setup.ps1
-.venv\Scripts\Activate.ps1
 ```
 
 ### Manual Installation
 
-Requires Python 3.11-3.13 (not 3.14).
-
 ```bash
-python -m venv .venv
-source .venv/bin/activate        # macOS/Linux
-# .venv\Scripts\Activate.ps1     # Windows
+# Install uv if you don't have it
+curl -LsSf https://astral.sh/uv/install.sh | sh   # macOS/Linux
+# or: powershell -c "irm https://astral.sh/uv/install.ps1 | iex"  # Windows
 
-pip install -e .
-playwright install chromium
+git clone git@github.com:unstatusthequo/sharepoint-dl.git
+cd sharepoint-dl
+uv lock && uv sync
+uv run playwright install chromium
 ```
 
-## Quick Start
+## Quick Start (Interactive Mode)
+
+The easiest way to use SPDL -- just launch it and follow the prompts:
 
 ```bash
-# 1. Authenticate (browser opens, complete login)
-sharepoint-dl auth '<sharepoint-sharing-url>'
-
-# 2. List files to see what's there
-sharepoint-dl list '<url>' -r '/sites/SiteName/Shared Documents/Path/To/Folder'
-
-# 3. Download everything
-sharepoint-dl download '<url>' /path/to/dest -r '/sites/SiteName/Shared Documents/Path/To/Folder'
+./run.sh          # macOS/Linux
+.\run.ps1         # Windows
 ```
 
-> **Windows note:** Use double quotes `"` instead of single quotes `'` for URLs.
+The interactive mode will:
 
-## Commands
+1. Ask you to paste the SharePoint sharing link
+2. Open a browser for authentication (or reuse a cached session)
+3. Let you browse folders and select which one to download
+4. Ask where to save the files and how many parallel workers to use
+5. Download everything flat into one folder with progress bars
+6. Generate `manifest.json` with SHA-256 hashes for every file
+
+```
+  SPDL — SharePoint Bulk Downloader  v0.1
+  @unstatusthequo · Ctrl+C cancel · Re-run to resume
+
+  > Paste the SharePoint sharing link: https://company.sharepoint.com/...
+    Session active — using saved credentials.
+
+  > 02 SELECT TARGET FOLDER
+    Shared root: /sites/Team/Shared Documents/General/Images
+
+      1. Custodian A
+      2. Custodian B
+      3. Custodian C
+      0. >> DOWNLOAD THIS FOLDER <<
+
+    Navigate or select: 1
+
+    Found 165 files (237.1 GB total)
+
+  > 04 CONFIGURATION
+    Download destination [~/Downloads/sharepoint-dl]: /evidence/custodian-a
+    Parallel workers (1-8) [3]: 3
+
+  Start download? [Y/n]: y
+```
+
+## CLI Mode (Advanced)
+
+All commands are also available as direct CLI flags for scripting or automation.
 
 ### `auth` -- Authenticate
 
-Opens a Chromium browser to the SharePoint URL. Complete the login (email + OTP code), and the session cookies are saved automatically. The browser closes when auth is detected.
-
 ```bash
-sharepoint-dl auth '<sharepoint-url>'
+./run.sh auth '<sharepoint-sharing-url>'
 ```
 
-Session is saved to `~/.sharepoint-dl/session.json` and reused across runs until it expires.
+Opens Chromium, you complete the login, session is saved to `~/.sharepoint-dl/session.json`. Reused automatically on future runs until it expires.
 
 ### `list` -- Enumerate Files
 
-Lists all files in a SharePoint folder without downloading. Shows per-folder breakdown with file counts and sizes.
-
 ```bash
-sharepoint-dl list '<url>' -r '/sites/SiteName/Shared Documents/Folder'
+./run.sh list '<url>' -r '/sites/Team/Shared Documents/Folder'
 ```
 
 | Option | Description |
 |--------|-------------|
 | `-r, --root-folder` | **(Required)** Server-relative path to the folder to enumerate |
 
-Example output:
-
-```
-                     Enumeration Results
-┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━┳━━━━━━━━━━┓
-┃ Folder                              ┃ Files ┃     Size ┃
-┡━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━╇━━━━━━━━━━┩
-│ /sites/.../LAPTOP-5V7K1CJ4          │   165 │ 237.1 GB │
-└─────────────────────────────────────┴───────┴──────────┘
-
-Found 165 files (237.1 GB total) across 1 folders
-```
-
 ### `download` -- Download Files
 
-Downloads all files from a SharePoint folder with progress bars, resume capability, and manifest generation.
-
 ```bash
-sharepoint-dl download '<url>' /path/to/destination -r '/sites/SiteName/Shared Documents/Folder'
+./run.sh download '<url>' /path/to/dest -r '/sites/Team/Shared Documents/Folder'
 ```
 
 | Option | Description |
 |--------|-------------|
 | `-r, --root-folder` | **(Required)** Server-relative path to the folder to download |
-| `-w, --workers N` | Number of concurrent download workers, 1-8 (default: 3) |
+| `-w, --workers N` | Concurrent download workers, 1-8 (default: 3) |
 | `-y, --yes` | Skip confirmation prompt |
-| `--flat` | Download all files directly into dest folder (no subdirectories) |
+| `--flat` | All files directly in dest folder (no subdirectories) |
 | `--no-manifest` | Skip manifest.json generation |
 
-#### Examples
-
-**Download with default settings (asks for confirmation):**
+#### CLI Examples
 
 ```bash
-sharepoint-dl download '<url>' ./evidence -r '/sites/Team/Shared Documents/Images/Custodian1/LAPTOP-ABC'
-```
+# Download flat with 5 workers, skip confirmation
+./run.sh download '<url>' ./evidence \
+  -r '/sites/Team/Shared Documents/Images/Custodian/LAPTOP-ABC' \
+  --flat -w 5 -y
 
-**Download flat (no nested folders) with 5 workers, skip confirmation:**
-
-```bash
-sharepoint-dl download '<url>' ./evidence -r '/sites/Team/Shared Documents/Images/Custodian1/LAPTOP-ABC' --flat -w 5 -y
-```
-
-**Resume an interrupted download (just re-run the same command):**
-
-```bash
-# Ctrl+C during download, then re-run:
-sharepoint-dl download '<url>' ./evidence -r '/sites/Team/Shared Documents/Images/Custodian1/LAPTOP-ABC' --flat
+# Resume an interrupted download (just re-run the same command)
+./run.sh download '<url>' ./evidence \
+  -r '/sites/Team/Shared Documents/Images/Custodian/LAPTOP-ABC' \
+  --flat
 # Completed files are skipped automatically
 ```
 
+> **Windows:** Use `.\run.ps1` instead of `./run.sh`, and double quotes `"` instead of single quotes `'`.
+
+## Finding the Root Folder Path (CLI Mode)
+
+The `-r` flag requires the server-relative path. To find it:
+
+1. Open the SharePoint sharing link in your browser
+2. Navigate to the target folder
+3. Look at the browser URL for the `id=` parameter
+4. URL-decode it (`%2F` = `/`, `%20` = space)
+
+Example URL:
+```
+...?id=%2Fsites%2FTeam%2FShared%20Documents%2FImages%2FCustodian
+```
+
+Root folder path:
+```
+/sites/Team/Shared Documents/Images/Custodian
+```
+
+> **Tip:** In interactive mode you don't need this -- just browse and select.
+
 ## Output Files
 
-After a download completes, the destination folder contains:
+After a download, the destination folder contains:
 
 | File | Description |
 |------|-------------|
-| `*.E01, *.L01, ...` | Downloaded evidence files |
-| `state.json` | Internal tracking file (per-file status, used for resume) |
-| `manifest.json` | Forensic manifest with SHA-256 hashes for every file |
+| Your downloaded files | All files from the SharePoint folder |
+| `state.json` | Per-file tracking (status, hash). Used for resume on re-run |
+| `manifest.json` | Forensic manifest -- proof of completeness |
 
 ### manifest.json
 
-The manifest is the forensic deliverable. It contains:
+The manifest contains:
 
 - **Per file:** filename, remote path, local path, size in bytes, SHA-256 hash, download timestamp
 - **Metadata:** source URL, root folder, total file count, total size, generation timestamp, tool version
 
 SHA-256 hashes are computed during the download stream -- files are never re-read from disk.
 
-## Finding the Root Folder Path
-
-The `--root-folder` (`-r`) flag requires the server-relative path to the SharePoint folder. To find it:
-
-1. Open the SharePoint sharing link in your browser
-2. Navigate to the folder you want to download
-3. Look at the browser URL -- it contains an `id=` parameter with the path
-4. URL-decode it (replace `%2F` with `/`, `%20` with spaces)
-
-Example: if the browser shows:
-
-```
-...?id=%2Fsites%2FTeam%2FShared%20Documents%2FImages%2FCustodian
-```
-
-The root folder path is:
-
-```
-/sites/Team/Shared Documents/Images/Custodian
-```
-
 ## Troubleshooting
 
 | Problem | Solution |
 |---------|----------|
-| `No active session` | Run `sharepoint-dl auth '<url>'` first |
-| `Session expired` | Re-run `sharepoint-dl auth '<url>'` |
-| Browser closes before login completes | Auth waits for the `FedAuth` cookie -- make sure you complete the full login flow |
-| `Cannot determine folder path` | Use `-r` to specify the server-relative path (see section above) |
-| Files silently missing | This tool fixes that -- pagination is handled correctly. Compare `list` count to browser count |
-| Python 3.14 errors | Use Python 3.11-3.13. The `setup.sh`/`setup.ps1` scripts handle this |
+| `ModuleNotFoundError` | Run `rm -rf .venv && uv lock && uv sync` |
+| `No active session` | Run auth again, or use interactive mode (handles it automatically) |
+| `Session expired` | Re-run -- interactive mode re-authenticates automatically |
+| Browser closes before login completes | Make sure you complete the full login flow (email + OTP code) |
+| Size mismatch errors | Fixed in latest version. Re-run to retry failed files automatically |
+| `Ctrl+C` during download | Progress is saved. Re-run to resume |
+| Python 3.14 errors | Use Python 3.11-3.13. Setup scripts handle this automatically |
 
 ## Requirements
 
-- Python 3.11-3.13
+- [uv](https://docs.astral.sh/uv/) (installed automatically by setup scripts)
+- Python 3.11-3.13 (installed automatically by uv if needed)
 - Chromium (installed automatically by Playwright)
-- Access to the SharePoint site via sharing link (email + OTP code)
+- Access to a SharePoint site via external sharing link
+
+## License
+
+MIT
