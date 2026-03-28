@@ -5,13 +5,31 @@ $ErrorActionPreference = "Stop"
 Write-Host "=== SharePoint Bulk Downloader Setup ===" -ForegroundColor Cyan
 Write-Host ""
 
-# Check for uv
-try {
-    $uvPath = (Get-Command uv -ErrorAction SilentlyContinue).Source
-    Write-Host "Found uv at $uvPath" -ForegroundColor Green
-} catch {
+# Find or install uv
+$uvCmd = Get-Command uv -ErrorAction SilentlyContinue
+if ($uvCmd) {
+    Write-Host "Found uv at $($uvCmd.Source)" -ForegroundColor Green
+} else {
     Write-Host "Installing uv..." -ForegroundColor Yellow
     Invoke-RestMethod https://astral.sh/uv/install.ps1 | Invoke-Expression
+
+    # Add uv to PATH for this session
+    $uvHome = "$env:USERPROFILE\.local\bin"
+    if (-not (Test-Path $uvHome)) {
+        $uvHome = "$env:USERPROFILE\.cargo\bin"
+    }
+    if (Test-Path $uvHome) {
+        $env:PATH = "$uvHome;$env:PATH"
+        Write-Host "Added $uvHome to PATH" -ForegroundColor Green
+    }
+
+    # Verify uv is now available
+    $uvCmd = Get-Command uv -ErrorAction SilentlyContinue
+    if (-not $uvCmd) {
+        Write-Host "ERROR: uv installed but not found in PATH." -ForegroundColor Red
+        Write-Host "Close this terminal, open a new one, and re-run setup.ps1" -ForegroundColor Yellow
+        exit 1
+    }
 }
 
 # Clean any corrupted state
@@ -32,8 +50,4 @@ Write-Host ""
 Write-Host "=== Setup Complete ===" -ForegroundColor Green
 Write-Host ""
 Write-Host "To use:" -ForegroundColor Cyan
-Write-Host "  uv run sharepoint-dl"
-Write-Host ""
-Write-Host "Or activate the venv:" -ForegroundColor Cyan
-Write-Host "  .venv\Scripts\Activate.ps1"
-Write-Host "  sharepoint-dl"
+Write-Host "  .\run.ps1"
