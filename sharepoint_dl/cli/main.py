@@ -121,38 +121,45 @@ def _interactive_mode() -> None:
 
 
 def _print_banner() -> None:
-    """Print the warez scene NFO-style ASCII art banner."""
-    D = "dim"
-    M = "bright_magenta"
-    C = "bright_cyan"
-    Y = "bright_yellow"
-    G = "bright_green"
+    """Print the warez scene NFO-style ASCII art banner using ANSI escapes."""
+    # Direct ANSI escape codes — bypasses Rich markup entirely
+    RST = "\033[0m"
+    DIM = "\033[2m"
+    BOLD = "\033[1m"
+    MAG = "\033[95m"  # bright magenta
+    CYN = "\033[96m"  # bright cyan
+    YEL = "\033[93m"  # bright yellow
+    GRN = "\033[92m"  # bright green
 
-    # Build banner with escaped backslashes for Rich markup
-    S = "\\\\"  # double-escaped backslash for f-string + Rich
-    lines = [
-        f"[{D}]   ·── ── ─── ──── ───── ────── ─────── ────── ───── ──── ─── ── ──·[/{D}]",
-        f"[{D}]   :    ░░░▒▒▒▓▓▓███████████████████████████████▓▓▓▒▒▒░░░          :[/{D}]",
-        f"[{D}]   :                                                                :[/{D}]",
-        f"[{D}]   :[/{D}]      [{M}]  ___[/{M}]           [{C}]___[/{C}]                               [{D}]:[/{D}]",
-        f"[{D}]   :[/{D}]      [{M}] /{S}__{S}[/{M}]         [{C}]/{S}  {S}[/{C}]       [{Y}]_____[/{Y}]                  [{D}]:[/{D}]",
-        f"[{D}]   :[/{D}]      [{M}]/:/ _/_[/{M}]       [{C}]/:{S}  {S}[/{C}]     [{Y}]/:{S}  {S}[/{Y}]                 [{D}]:[/{D}]",
-        f"[{D}]   :[/{D}]      [{M}]/:/ /{S}  {S}[/{M}]     [{C}]/:/:{S}__:{S}[/{C}]   [{Y}]/:/:{S}  {S}[/{Y}]                [{D}]:[/{D}]",  # noqa: E501
-        f"[{D}]   :[/{D}]      [{M}]/:/ /:{S}  {S}[/{M}]   [{C}]/:/ /:/  /[/{C}]  [{Y}]/:/  {S}:{S}__{S}[/{Y}]   [{G}]___     ___[/{G}] [{D}]:[/{D}]",  # noqa: E501
-        f"[{D}]   :[/{D}]      [{M}]/:/_/:/{S}:{S}__{S}[/{M}] [{C}]/:/_/:/  /[/{C}]  [{Y}]/:/__/ {S}:|__| [/{Y}][{G}]/{S}  {S}   /{S}__{S}[/{G}][{D}]:[/{D}]",  # noqa: E501
-        f"[{D}]   :[/{D}]      [{M}]{S}:{S}/:/ /:/  /[/{M}] [{C}]{S}:{S}/:/  /[/{C}]   [{Y}]{S}:{S}  {S} /:/  /[/{Y}] [{G}]{S}:{S}  {S} /:/  /[/{G}][{D}]:[/{D}]",  # noqa: E501
-        f"[{D}]   :[/{D}]      [{M}] {S}::/ /:/  /[/{M}]   [{C}]{S}::/__/[/{C}]     [{Y}]{S}:{S}  /:/  /[/{Y}]   [{G}]{S}:{S}  /:/  /[/{G}] [{D}]:[/{D}]",  # noqa: E501
-        f"[{D}]   :[/{D}]      [{M}]  {S}/_/:/  /[/{M}]     [{C}]{S}:{S}  {S}[/{C}]      [{Y}]{S}:{S}/:/  /[/{Y}]     [{G}]{S}:{S}/:/  /[/{G}]  [{D}]:[/{D}]",  # noqa: E501
-        f"[{D}]   :[/{D}]      [{M}]    /:/  /[/{M}]       [{C}]{S}:{S}__{S}[/{C}]      [{Y}]{S}::/  /[/{Y}]       [{G}]{S}::/  /[/{G}]   [{D}]:[/{D}]",  # noqa: E501
-        f"[{D}]   :[/{D}]      [{M}]    {S}/__/[/{M}]         [{C}]{S}/__/[/{C}]       [{Y}]{S}/__/[/{Y}]         [{G}]{S}/__/[/{G}]    [{D}]:[/{D}]",  # noqa: E501
-        f"[{D}]   :                                                                :[/{D}]",
-        f"[{D}]   :    ░░░▒▒▒▓▓▓███████████████████████████████▓▓▓▒▒▒░░░          :[/{D}]",
-        f"[{D}]   ·── ── ─── ──── ───── ────── ─────── ────── ───── ──── ─── ── ──·[/{D}]",
-        f"[{D}]   :[/{D}] [{Y}]  SharePoint Bulk Downloader[/{Y}]  [{D}]v0.1[/{D}]                       [{D}]:[/{D}]",
-        f"[{D}]   :[/{D}] [{D}]  Ctrl+C cancel · Re-run to resume[/{D}]                     [{D}]:[/{D}]",
-        f"[{D}]   ·── ── ─── ──── ───── ────── ─────── ────── ───── ──── ─── ── ──·[/{D}]",
-    ]
-    console.print("\n".join(lines))
+    # The ASCII art with each letter in a different color
+    S = MAG
+    P = CYN
+    D = YEL
+    L = GRN
+
+    art = rf"""
+{DIM}   ·── ── ─── ──── ───── ────── ─────── ────── ───── ──── ─── ── ──·{RST}
+{DIM}   :    ░░░▒▒▒▓▓▓███████████████████████████████▓▓▓▒▒▒░░░          :{RST}
+{DIM}   :                                                                :{RST}
+{DIM}   :{RST}      {S}  ___          {P} ___              {RST}                {DIM}:{RST}
+{DIM}   :{RST}      {S} /\__\         {P}/\  \       {D}_____   {RST}               {DIM}:{RST}
+{DIM}   :{RST}      {S}/:/ _/_       {P}/::\  \     {D}/::\  \  {RST}              {DIM}:{RST}
+{DIM}   :{RST}      {S}/:/ /\  \     {P}/:/\:\__\   {D}/:/\:\  \ {RST}             {DIM}:{RST}
+{DIM}   :{RST}      {S}/:/ /::\  \   {P}/:/ /:/  /  {D}/:/  \:\__\   {L}___     ___{RST} {DIM}:{RST}
+{DIM}   :{RST}      {S}/:/_/:/\:\__\ {P}/:/_/:/  /  {D}/:/__/ \:|__| {L}/\  \   /\__\{RST}{DIM}:{RST}
+{DIM}   :{RST}      {S}\:\/:/ /:/  / {P}\:\/:/  /   {D}\:\  \ /:/  / {L}\:\  \ /:/  /{RST}{DIM}:{RST}
+{DIM}   :{RST}      {S} \::/ /:/  /   {P}\::/__/     {D}\:\  /:/  /   {L}\:\  /:/  / {RST}{DIM}:{RST}
+{DIM}   :{RST}      {S}  \/_/:/  /     {P}\:\  \      {D}\:\/:/  /     {L}\:\/:/  /  {RST}{DIM}:{RST}
+{DIM}   :{RST}      {S}    /:/  /       {P}\:\__\      {D}\::/  /       {L}\::/  /   {RST}{DIM}:{RST}
+{DIM}   :{RST}      {S}    \/__/         {P}\/__/       {D}\/__/         {L}\/__/    {RST}{DIM}:{RST}
+{DIM}   :                                                                :{RST}
+{DIM}   :    ░░░▒▒▒▓▓▓███████████████████████████████▓▓▓▒▒▒░░░          :{RST}
+{DIM}   ·── ── ─── ──── ───── ────── ─────── ────── ───── ──── ─── ── ──·{RST}
+{DIM}   :{RST} {BOLD}{YEL}  SharePoint Bulk Downloader{RST}  {DIM}v0.1                       :{RST}
+{DIM}   :  Ctrl+C cancel · Re-run to resume                     :{RST}
+{DIM}   ·── ── ─── ──── ───── ────── ─────── ────── ───── ──── ─── ── ──·{RST}
+"""
+    print(art)
 
 
 def _section_header(number: str, title: str) -> None:
