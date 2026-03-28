@@ -151,6 +151,7 @@ def _make_progress() -> Progress:
         DownloadColumn(),
         TransferSpeedColumn(),
         TimeElapsedColumn(),
+        TextColumn("{task.fields[status]}"),
     )
 
 
@@ -201,11 +202,16 @@ def download_all(
     # Set up progress tasks
     overall_task = None
     worker_tasks: list = []
+    completed_count = 0
+    total_pending = len(pending)
     if progress is not None:
         total_size = sum(file_map[url].size_bytes for url in pending if url in file_map)
-        overall_task = progress.add_task("Overall", total=total_size)
+        overall_task = progress.add_task(
+            "Overall", total=total_size,
+            status=f"[cyan]0/{total_pending} files[/cyan]",
+        )
         for i in range(workers):
-            wt = progress.add_task(f"[worker {i}]", total=0, visible=False)
+            wt = progress.add_task(f"[worker {i}]", total=0, visible=False, status="")
             worker_tasks.append(wt)
 
     def worker(url: str, worker_id: int) -> None:
@@ -238,9 +244,16 @@ def download_all(
                 sha256=sha,
                 downloaded_at=datetime.now(timezone.utc).isoformat(),
             )
+            nonlocal completed_count
+            completed_count += 1
             if progress is not None and worker_tasks:
                 wt = worker_tasks[worker_id % len(worker_tasks)]
                 progress.update(wt, visible=False)
+                if overall_task is not None:
+                    progress.update(
+                        overall_task,
+                        status=f"[cyan]{completed_count}/{total_pending} files[/cyan]",
+                    )
         except AuthExpiredError as e:
             auth_halt.set()
             auth_error.append(e)

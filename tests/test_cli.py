@@ -475,12 +475,11 @@ class TestDownloadCompleteSummary:
 class TestHelpOutput:
     """No args shows help."""
 
-    def test_no_args_shows_help(self):
-        """Invoking with no args shows help text."""
-        result = runner.invoke(app, [])
+    def test_help_flag_shows_help(self):
+        """Invoking with --help shows help text."""
+        result = runner.invoke(app, ["--help"])
 
-        # Typer no_args_is_help exits with code 0 (shell) but CliRunner sees 2
-        assert result.exit_code in (0, 2)
+        assert result.exit_code == 0
         assert "auth" in result.output
         assert "list" in result.output
         assert "download" in result.output
