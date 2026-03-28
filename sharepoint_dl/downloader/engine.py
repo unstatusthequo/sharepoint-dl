@@ -224,15 +224,28 @@ def download_all(
 
         state.set_status(url, FileStatus.DOWNLOADING, local_path=local_path)
 
-        # Set up progress for this worker
+        # Each worker gets its own dedicated progress task (by worker_id)
+        my_task = None
         if progress is not None and worker_tasks:
-            wt = worker_tasks[worker_id % len(worker_tasks)]
-            progress.update(wt, description=file_entry.name, total=file_entry.size_bytes, completed=0, visible=True)
+            my_task = worker_tasks[worker_id % len(worker_tasks)]
+            # Reset: set completed to 0 and total to this file's size
+            progress.update(
+                my_task,
+                description=file_entry.name,
+                total=file_entry.size_bytes,
+                completed=0,
+                visible=True,
+                status="",
+            )
 
-            def on_chunk(n: int) -> None:
-                progress.update(wt, advance=n)
-                if overall_task is not None:
-                    progress.update(overall_task, advance=n)
+            # Capture my_task in closure to avoid stale references
+            _task = my_task
+            _overall = overall_task
+
+            def on_chunk(n: int, _t=_task, _o=_overall) -> None:
+                progress.update(_t, advance=n)
+                if _o is not None:
+                    progress.update(_o, advance=n)
         else:
             on_chunk = None  # type: ignore[assignment]
 
@@ -246,9 +259,8 @@ def download_all(
             )
             nonlocal completed_count
             completed_count += 1
-            if progress is not None and worker_tasks:
-                wt = worker_tasks[worker_id % len(worker_tasks)]
-                progress.update(wt, visible=False)
+            if progress is not None and my_task is not None:
+                progress.update(my_task, visible=False)
                 if overall_task is not None:
                     progress.update(
                         overall_task,
