@@ -54,7 +54,7 @@ def _build_download_url(site_url: str, server_relative_url: str) -> str:
     Returns:
         Full download.aspx URL with SourceUrl parameter.
     """
-    encoded = quote(server_relative_url, safe="/:@!$&'()*+,;=")
+    encoded = quote(server_relative_url, safe="/:@!$&'()*,;=")
     return f"{site_url.rstrip('/')}/_layouts/15/download.aspx?SourceUrl={encoded}"
 
 
@@ -284,6 +284,47 @@ def download_all(
 
     if auth_error:
         raise auth_error[0]
+
+    # Retry failed files (up to 2 additional rounds)
+    for retry_round in range(1, 3):
+        failed_urls = [url for url, _reason in state.failed_files()]
+        if not failed_urls:
+            break
+
+        if progress is not None and overall_task is not None:
+            progress.update(
+                overall_task,
+                status=f"[yellow]Retry round {retry_round}: {len(failed_urls)} files[/yellow]",
+            )
+
+        # Reset failed files to pending for retry
+        for url in failed_urls:
+            state.set_status(url, FileStatus.PENDING, error=None)
+
+        retry_halt = threading.Event()
+        retry_auth_error: list[AuthExpiredError] = []
+
+        with ThreadPoolExecutor(max_workers=workers) as retry_executor:
+            retry_futures = {}
+            for i, url in enumerate(failed_urls):
+                if retry_halt.is_set():
+                    break
+                future = retry_executor.submit(worker, url, i % workers)
+                retry_futures[future] = url
+
+            for future in as_completed(retry_futures):
+                try:
+                    future.result()
+                except AuthExpiredError:
+                    for f in retry_futures:
+                        f.cancel()
+                    retry_auth_error.append(future.exception())
+                    break
+                except Exception:
+                    pass
+
+        if retry_auth_error:
+            raise retry_auth_error[0]
 
     return state.complete_files(), state.failed_files()
 
