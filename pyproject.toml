@@ -25,6 +25,11 @@ line-length = 100
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
+[dependency-groups]
+dev = [
+    "pytest>=9.0.2",
+]
+
 [project.optional-dependencies]
 dev = [
     "pytest>=9.0.2",

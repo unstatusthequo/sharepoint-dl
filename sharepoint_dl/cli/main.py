@@ -111,9 +111,23 @@ def main_callback(ctx: typer.Context) -> None:
 
 def _interactive_mode() -> None:
     """Interactive TUI that guides the user through auth, folder selection, and download."""
+    import os
+
+    try:
+        _interactive_mode_inner()
+    except KeyboardInterrupt:
+        console.print("\n\n[yellow]Cancelled.[/yellow]")
+        raise typer.Exit(code=0)
+
+
+def _interactive_mode_inner() -> None:
+    """Inner interactive flow — separated so KeyboardInterrupt is caught cleanly."""
+    import os
+
+    os.system("cls" if os.name == "nt" else "clear")
     console.print()
     console.print("[bold cyan]SharePoint Bulk Downloader[/bold cyan]")
-    console.print("[dim]Interactive mode — follow the prompts[/dim]")
+    console.print("[dim]Interactive mode — Ctrl+C to cancel at any time[/dim]")
     console.print()
 
     # Step 1: Get sharing URL
@@ -270,6 +284,7 @@ def _interactive_mode() -> None:
     failed: list[tuple[str, str]] = []
     state: JobState | None = None
 
+    cancelled = False
     try:
         progress = _make_progress()
         with progress:
@@ -282,23 +297,32 @@ def _interactive_mode() -> None:
         state = JobState(dest)
         completed = state.complete_files()
         failed = state.failed_files()
+    except KeyboardInterrupt:
+        cancelled = True
+        console.print("\n\n[yellow]Cancelled — saving progress...[/yellow]")
+        state = JobState(dest)
+        completed = state.complete_files()
+        failed = state.failed_files()
     else:
         state = JobState(dest)
 
     elapsed = time.time() - start_time
 
-    # Manifest
+    # Manifest (even on cancel — captures what completed so far)
     manifest_path = None
-    if state is not None:
+    if state is not None and completed:
         manifest_path = generate_manifest(state, dest, sharing_url, server_relative_path, flat=True)
 
     # Report
-    status_ok = not auth_expired and len(failed) == 0
-    status_text = (
-        "[green]COMPLETE[/green]"
-        if status_ok
-        else f"[red]INCOMPLETE — {len(failed)} failed[/red]"
-    )
+    remaining = len(files) - len(completed) - len(failed)
+    if cancelled:
+        status_text = f"[yellow]CANCELLED — {len(completed)} complete, {remaining} remaining[/yellow]"
+    elif auth_expired:
+        status_text = f"[red]SESSION EXPIRED — {len(completed)} complete, {remaining} remaining[/red]"
+    elif failed:
+        status_text = f"[red]INCOMPLETE — {len(failed)} failed[/red]"
+    else:
+        status_text = "[green]COMPLETE[/green]"
     console.print()
     console.print("[bold]Completeness Report[/bold]")
     console.print(f"  Expected:   {len(files)}")
@@ -317,6 +341,12 @@ def _interactive_mode() -> None:
             fname = file_url.rsplit("/", 1)[-1] if "/" in file_url else file_url
             error_table.add_row(fname, reason)
         console.print(error_table)
+
+    if cancelled:
+        console.print(
+            "\n[yellow]Re-run to resume — completed files will be skipped.[/yellow]"
+        )
+        raise typer.Exit(code=0)
 
     if auth_expired:
         console.print(
@@ -557,6 +587,7 @@ def download(
     # 7-8. Download with progress
     start_time = time.time()
     auth_expired = False
+    cancelled = False
     completed: list[str] = []
     failed: list[tuple[str, str]] = []
     state: JobState | None = None
@@ -574,6 +605,12 @@ def download(
             )
     except AuthExpiredError:
         auth_expired = True
+        state = JobState(dest)
+        completed = state.complete_files()
+        failed = state.failed_files()
+    except KeyboardInterrupt:
+        cancelled = True
+        console.print("\n\n[yellow]Cancelled — saving progress...[/yellow]")
         state = JobState(dest)
         completed = state.complete_files()
         failed = state.failed_files()
