@@ -143,12 +143,12 @@ def _download_file(
 
 
 def _make_progress() -> Progress:
-    """Create a Rich Progress instance with download-appropriate columns."""
+    """Create a Rich Progress instance with cyberpunk-styled download columns."""
     return Progress(
-        SpinnerColumn(),
-        TextColumn("[progress.description]{task.description}"),
-        BarColumn(bar_width=None),
-        DownloadColumn(),
+        SpinnerColumn(style="bright_magenta"),
+        TextColumn("[bright_cyan]{task.description}[/bright_cyan]"),
+        BarColumn(bar_width=None, complete_style="bright_magenta", finished_style="bright_green"),
+        DownloadColumn(binary_units=True),
         TransferSpeedColumn(),
         TimeElapsedColumn(),
         TextColumn("{task.fields[status]}"),

@@ -120,22 +120,65 @@ def _interactive_mode() -> None:
         raise typer.Exit(code=0)
 
 
+def _print_banner() -> None:
+    """Print the warez scene ASCII art banner."""
+    # Cyberpunk color palette
+    M = "bright_magenta"  # neon pink
+    C = "bright_cyan"     # electric cyan
+    Y = "bright_yellow"   # acid yellow
+    W = "white"
+    D = "dim"
+
+    banner = f"""[{M}]
+    ███████╗██████╗ ██████╗ ██╗     [/{M}]
+    [{C}]██╔════╝██╔══██╗██╔══██╗██║     [/{C}]
+    [{M}]███████╗██████╔╝██║  ██║██║     [/{M}]
+    [{C}]╚════██║██╔═══╝ ██║  ██║██║     [/{C}]
+    [{M}]███████║██║     ██████╔╝███████╗[/{M}]
+    [{C}]╚══════╝╚═╝     ╚═════╝ ╚══════╝[/{C}]
+[{D}]  ┌──────────────────────────────────────────┐[/{D}]
+[{D}]  │[/{D}] [{Y}]SharePoint Bulk Downloader[/{Y}] [{D}]v0.1.0[/{D}]      [{D}]│[/{D}]
+[{D}]  │[/{D}] [{D}]Ctrl+C to cancel at any time[/{D}]           [{D}]│[/{D}]
+[{D}]  └──────────────────────────────────────────┘[/{D}]"""
+    console.print(banner)
+
+
+def _section_header(number: str, title: str) -> None:
+    """Print a styled section header."""
+    console.print()
+    console.print(f"  [bright_magenta]>[/bright_magenta] [bold bright_cyan]{number}[/bold bright_cyan] [bold]{title}[/bold]")
+
+
+def _success(text: str) -> None:
+    console.print(f"    [bright_green]{text}[/bright_green]")
+
+
+def _info(text: str) -> None:
+    console.print(f"    [dim]{text}[/dim]")
+
+
+def _warn(text: str) -> None:
+    console.print(f"    [bright_yellow]{text}[/bright_yellow]")
+
+
+def _error(text: str) -> None:
+    console.print(f"    [bright_red]{text}[/bright_red]")
+
+
 def _interactive_mode_inner() -> None:
     """Inner interactive flow — separated so KeyboardInterrupt is caught cleanly."""
     import os
 
     os.system("cls" if os.name == "nt" else "clear")
-    console.print()
-    console.print("[bold cyan]SharePoint Bulk Downloader[/bold cyan]")
-    console.print("[dim]Interactive mode — Ctrl+C to cancel at any time[/dim]")
+    _print_banner()
     console.print()
 
     # Step 1: Get sharing URL
     sharing_url = Prompt.ask(
-        "[bold]1. Paste the SharePoint sharing link[/bold]"
+        "  [bright_magenta]>[/bright_magenta] [bold]Paste the SharePoint sharing link[/bold]"
     ).strip()
     if not sharing_url:
-        console.print("[red]No URL provided.[/red]")
+        _error("No URL provided.")
         raise typer.Exit(code=1)
 
     # Step 2: Authenticate
@@ -143,50 +186,48 @@ def _interactive_mode_inner() -> None:
     session = load_session(sharing_url)
 
     if session is not None and validate_session(session, site_url):
-        console.print("[green]Session active — using saved credentials.[/green]")
+        _success("Session active — using saved credentials.")
     else:
-        console.print("\n[yellow]Opening browser for authentication...[/yellow]")
-        console.print("[dim]Complete the login (email + code), then the browser will close automatically.[/dim]")
+        _warn("Opening browser for authentication...")
+        _info("Complete the login (email + code), then the browser will close automatically.")
         try:
             harvest_session(sharing_url)
         except TimeoutError:
-            console.print("[red]Authentication timed out. Please try again.[/red]")
+            _error("Authentication timed out. Please try again.")
             raise typer.Exit(code=1)
         session = load_session(sharing_url)
         if session is None:
-            console.print("[red]Failed to load session after auth.[/red]")
+            _error("Failed to load session after auth.")
             raise typer.Exit(code=1)
-        console.print("[green]Authenticated successfully.[/green]")
+        _success("Authenticated successfully.")
 
     # Step 3: Resolve the shared folder
-    console.print()
-    console.print("[bold]2. Select the folder to download[/bold]")
+    _section_header("02", "SELECT TARGET FOLDER")
 
-    # Try to resolve the sharing link to a root folder
-    with console.status("[dim]Resolving sharing link...[/dim]", spinner="dots"):
+    with console.status("    [dim]Resolving sharing link...[/dim]", spinner="dots"):
         root_path = _resolve_sharing_link(session, sharing_url)
 
     if root_path:
-        console.print(f"[dim]Shared folder: {root_path}[/dim]")
+        _info(f"Shared root: {root_path}")
     else:
-        console.print("[yellow]Could not auto-resolve folder from sharing link.[/yellow]")
+        _warn("Could not auto-resolve folder from sharing link.")
 
     # Let user browse or paste a folder URL
     current_path = root_path
     while True:
         if current_path is None:
             folder_url = Prompt.ask(
-                "\n[bold]Paste the browser URL of the folder you want to download[/bold]"
+                "    [bold]Paste the browser URL of the target folder[/bold]"
             ).strip()
             current_path = _resolve_folder_from_browser_url(folder_url)
             if current_path is None:
-                console.print("[red]Could not extract folder path from that URL. Try again.[/red]")
+                _error("Could not extract folder path from that URL. Try again.")
                 continue
 
         # Show current folder and subfolders
-        console.print(f"\n[cyan]Current folder:[/cyan] {current_path}")
+        console.print(f"\n    [bright_cyan]Current:[/bright_cyan] {current_path}")
 
-        with console.status("[dim]Loading subfolders...[/dim]", spinner="dots"):
+        with console.status("    [dim]Loading subfolders...[/dim]", spinner="dots"):
             try:
                 subfolders = _list_subfolders(session, site_url, current_path)
             except Exception:
@@ -195,12 +236,16 @@ def _interactive_mode_inner() -> None:
         if subfolders:
             console.print()
             for i, sf in enumerate(subfolders, 1):
-                console.print(f"  [bold]{i}.[/bold] {sf['name']}")
-            console.print(f"  [bold]0.[/bold] [green]Download THIS folder[/green]")
+                console.print(
+                    f"    [bright_magenta]{i:>3}.[/bright_magenta] [bright_cyan]{sf['name']}[/bright_cyan]"
+                )
+            console.print(
+                f"    [bright_yellow]  0.[/bright_yellow] [bold bright_green]>> DOWNLOAD THIS FOLDER <<[/bold bright_green]"
+            )
             console.print()
 
             choice = Prompt.ask(
-                "Enter a number to navigate, or 0 to download this folder",
+                "    Navigate or select",
                 default="0",
             ).strip()
 
@@ -212,68 +257,69 @@ def _interactive_mode_inner() -> None:
                     current_path = subfolders[idx - 1]["path"]
                     continue
                 else:
-                    console.print("[red]Invalid number.[/red]")
+                    _error("Invalid number.")
                     continue
             except ValueError:
-                # Maybe they pasted a URL
                 resolved = _resolve_folder_from_browser_url(choice)
                 if resolved:
                     current_path = resolved
                     continue
-                console.print("[red]Invalid input. Enter a number or paste a folder URL.[/red]")
+                _error("Invalid input. Enter a number or paste a folder URL.")
                 continue
         else:
-            console.print("[dim]No subfolders — this is a leaf folder.[/dim]")
+            _info("No subfolders — this is a leaf folder.")
             break
 
     server_relative_path = current_path
 
     # Step 4: Enumerate files
-    console.print()
-    with console.status("[bold green]Scanning files...[/bold green]", spinner="dots"):
+    _section_header("03", "SCANNING FILES")
+
+    with console.status("    [bright_cyan]Enumerating...[/bright_cyan]", spinner="dots"):
         try:
             files = enumerate_files(session, site_url, server_relative_path)
         except AuthExpiredError:
-            console.print("[red]Session expired. Please restart.[/red]")
+            _error("Session expired. Please restart.")
             raise typer.Exit(code=1)
 
     if not files:
-        console.print("[yellow]No files found in that folder.[/yellow]")
+        _warn("No files found in that folder.")
         raise typer.Exit(code=0)
 
     total_size = sum(f.size_bytes for f in files)
-    console.print(
-        f"\nFound [bold]{len(files)} files[/bold] ({_format_size(total_size)} total)"
-    )
+    _success(f"Found {len(files)} files ({_format_size(total_size)} total)")
 
     # Step 5: Download destination
-    console.print()
+    _section_header("04", "CONFIGURATION")
+
     default_dest = str(Path.home() / "Downloads" / "sharepoint-dl")
     dest_str = Prompt.ask(
-        "[bold]3. Download destination[/bold]",
+        "    [bold]Download destination[/bold]",
         default=default_dest,
     ).strip()
     dest = Path(dest_str)
 
     # Step 6: Workers
     workers = IntPrompt.ask(
-        "[bold]4. Parallel download workers[/bold] (1-8)",
+        "    [bold]Parallel workers[/bold] (1-8)",
         default=3,
     )
     workers = max(1, min(8, workers))
 
     # Step 7: Confirm and download
     console.print()
-    console.print(f"[bold]Summary:[/bold]")
-    console.print(f"  Folder:  {server_relative_path}")
-    console.print(f"  Files:   {len(files)} ({_format_size(total_size)})")
-    console.print(f"  Dest:    {dest}")
-    console.print(f"  Workers: {workers}")
-    console.print(f"  Flat:    yes (all files in one folder)")
+    console.print(f"  [dim]{'─' * 44}[/dim]")
+    folder_display = server_relative_path.rsplit("/", 1)[-1] if "/" in server_relative_path else server_relative_path
+    console.print(f"  [bright_cyan]Folder:[/bright_cyan]  {folder_display}")
+    console.print(f"  [bright_cyan]Files:[/bright_cyan]   {len(files)} ({_format_size(total_size)})")
+    console.print(f"  [bright_cyan]Dest:[/bright_cyan]    {dest}")
+    console.print(f"  [bright_cyan]Workers:[/bright_cyan] {workers}")
+    console.print(f"  [bright_cyan]Layout:[/bright_cyan]  flat (all files in one folder)")
+    console.print(f"  [dim]{'─' * 44}[/dim]")
     console.print()
 
-    if not Confirm.ask("Start download?", default=True):
-        console.print("[yellow]Aborted.[/yellow]")
+    if not Confirm.ask("  [bold bright_yellow]>> Start download?[/bold bright_yellow]", default=True):
+        _warn("Aborted.")
         raise typer.Exit(code=0)
 
     # Execute download
@@ -316,27 +362,39 @@ def _interactive_mode_inner() -> None:
     # Report
     remaining = len(files) - len(completed) - len(failed)
     if cancelled:
-        status_text = f"[yellow]CANCELLED — {len(completed)} complete, {remaining} remaining[/yellow]"
+        status_text = f"[bright_yellow]CANCELLED[/bright_yellow] — {len(completed)} complete, {remaining} remaining"
     elif auth_expired:
-        status_text = f"[red]SESSION EXPIRED — {len(completed)} complete, {remaining} remaining[/red]"
+        status_text = f"[bright_red]SESSION EXPIRED[/bright_red] — {len(completed)} complete, {remaining} remaining"
     elif failed:
-        status_text = f"[red]INCOMPLETE — {len(failed)} failed[/red]"
+        status_text = f"[bright_red]INCOMPLETE[/bright_red] — {len(failed)} failed"
     else:
-        status_text = "[green]COMPLETE[/green]"
+        status_text = "[bold bright_green]COMPLETE[/bold bright_green]"
+
     console.print()
-    console.print("[bold]Completeness Report[/bold]")
-    console.print(f"  Expected:   {len(files)}")
-    console.print(f"  Downloaded: {len(completed)}")
-    console.print(f"  Failed:     {len(failed)}")
-    console.print(f"  Status:     {status_text}")
+    console.print(f"  [dim]{'═' * 44}[/dim]")
+    console.print(f"  [bold bright_cyan]COMPLETENESS REPORT[/bold bright_cyan]")
+    console.print(f"  [dim]{'─' * 44}[/dim]")
+    console.print(f"  [bright_cyan]Expected:[/bright_cyan]   {len(files)}")
+    console.print(f"  [bright_green]Downloaded:[/bright_green] {len(completed)}")
+    if failed:
+        console.print(f"  [bright_red]Failed:[/bright_red]     {len(failed)}")
+    else:
+        console.print(f"  [dim]Failed:[/dim]     0")
+    console.print(f"  [bright_cyan]Status:[/bright_cyan]     {status_text}")
 
     if manifest_path:
-        console.print(f"\n  Manifest: {manifest_path}")
+        console.print(f"  [bright_magenta]Manifest:[/bright_magenta]   {manifest_path}")
+    console.print(f"  [dim]{'═' * 44}[/dim]")
 
     if failed:
-        error_table = Table(title="Failed Downloads", style="red")
-        error_table.add_column("File", style="red")
-        error_table.add_column("Error", style="red")
+        console.print()
+        error_table = Table(
+            title="[bright_red]Failed Downloads[/bright_red]",
+            border_style="bright_red",
+            title_style="bold bright_red",
+        )
+        error_table.add_column("File", style="bright_yellow")
+        error_table.add_column("Error", style="bright_red")
         for file_url, reason in failed:
             fname = file_url.rsplit("/", 1)[-1] if "/" in file_url else file_url
             error_table.add_row(fname, reason)
@@ -344,14 +402,13 @@ def _interactive_mode_inner() -> None:
 
     if cancelled:
         console.print(
-            "\n[yellow]Re-run to resume — completed files will be skipped.[/yellow]"
+            "\n  [bright_yellow]Re-run to resume — completed files will be skipped.[/bright_yellow]"
         )
         raise typer.Exit(code=0)
 
     if auth_expired:
         console.print(
-            "\n[red]Session expired during download. "
-            "Re-run to resume — completed files will be skipped.[/red]"
+            "\n  [bright_red]Session expired. Re-run to resume — completed files skipped.[/bright_red]"
         )
         raise typer.Exit(code=1)
 
@@ -360,9 +417,9 @@ def _interactive_mode_inner() -> None:
 
     avg_speed = total_size / elapsed if elapsed > 0 else 0
     console.print(
-        f"\n[green]Done! {len(completed)} files "
+        f"\n  [bold bright_green]Done![/bold bright_green] {len(completed)} files "
         f"({_format_size(total_size)}) in {elapsed:.1f}s "
-        f"({_format_size(int(avg_speed))}/s)[/green]"
+        f"({_format_size(int(avg_speed))}/s)"
     )
 
 
