@@ -31,12 +31,20 @@ cd sharepoint-dl
 ./setup.sh
 ```
 
-### Windows (PowerShell)
+### Windows
+
+> **Important:** All commands must be run from **PowerShell**, not Command Prompt (CMD). Right-click the Start menu and select "Windows PowerShell" or "Terminal".
 
 ```powershell
-git clone git@github.com:unstatusthequo/sharepoint-dl.git
+git clone https://github.com/unstatusthequo/sharepoint-dl.git
 cd sharepoint-dl
 powershell -ExecutionPolicy Bypass -File setup.ps1
+```
+
+To run after setup:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\run.ps1
 ```
 
 ### Manual Installation
@@ -57,8 +65,8 @@ uv run playwright install chromium
 The easiest way to use SPDL -- just launch it and follow the prompts:
 
 ```bash
-./run.sh          # macOS/Linux
-.\run.ps1         # Windows
+./run.sh                                              # macOS/Linux
+powershell -ExecutionPolicy Bypass -File .\run.ps1    # Windows (from PowerShell)
 ```
 
 The interactive mode will:
@@ -147,7 +155,7 @@ Opens Chromium, you complete the login, session is saved to `~/.sharepoint-dl/se
 # Completed files are skipped automatically
 ```
 
-> **Windows:** Use `.\run.ps1` instead of `./run.sh`, and double quotes `"` instead of single quotes `'`.
+> **Windows:** Run all commands from **PowerShell** (not CMD). Use `powershell -ExecutionPolicy Bypass -File .\run.ps1` instead of `./run.sh`, and double quotes `"` instead of single quotes `'`.
 
 ## Finding the Root Folder Path (CLI Mode)
 
