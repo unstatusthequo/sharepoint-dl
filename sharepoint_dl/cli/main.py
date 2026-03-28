@@ -121,45 +121,11 @@ def _interactive_mode() -> None:
 
 
 def _print_banner() -> None:
-    """Print the warez scene NFO-style ASCII art banner using ANSI escapes."""
-    # Direct ANSI escape codes — bypasses Rich markup entirely
-    RST = "\033[0m"
-    DIM = "\033[2m"
-    BOLD = "\033[1m"
-    MAG = "\033[95m"  # bright magenta
-    CYN = "\033[96m"  # bright cyan
-    YEL = "\033[93m"  # bright yellow
-    GRN = "\033[92m"  # bright green
-
-    # The ASCII art with each letter in a different color
-    S = MAG
-    P = CYN
-    D = YEL
-    L = GRN
-
-    art = rf"""
-{DIM}   ·── ── ─── ──── ───── ────── ─────── ────── ───── ──── ─── ── ──·{RST}
-{DIM}   :    ░░░▒▒▒▓▓▓███████████████████████████████▓▓▓▒▒▒░░░          :{RST}
-{DIM}   :                                                                :{RST}
-{DIM}   :{RST}      {S}  ___          {P} ___              {RST}                {DIM}:{RST}
-{DIM}   :{RST}      {S} /\__\         {P}/\  \       {D}_____   {RST}               {DIM}:{RST}
-{DIM}   :{RST}      {S}/:/ _/_       {P}/::\  \     {D}/::\  \  {RST}              {DIM}:{RST}
-{DIM}   :{RST}      {S}/:/ /\  \     {P}/:/\:\__\   {D}/:/\:\  \ {RST}             {DIM}:{RST}
-{DIM}   :{RST}      {S}/:/ /::\  \   {P}/:/ /:/  /  {D}/:/  \:\__\   {L}___     ___{RST} {DIM}:{RST}
-{DIM}   :{RST}      {S}/:/_/:/\:\__\ {P}/:/_/:/  /  {D}/:/__/ \:|__| {L}/\  \   /\__\{RST}{DIM}:{RST}
-{DIM}   :{RST}      {S}\:\/:/ /:/  / {P}\:\/:/  /   {D}\:\  \ /:/  / {L}\:\  \ /:/  /{RST}{DIM}:{RST}
-{DIM}   :{RST}      {S} \::/ /:/  /   {P}\::/__/     {D}\:\  /:/  /   {L}\:\  /:/  / {RST}{DIM}:{RST}
-{DIM}   :{RST}      {S}  \/_/:/  /     {P}\:\  \      {D}\:\/:/  /     {L}\:\/:/  /  {RST}{DIM}:{RST}
-{DIM}   :{RST}      {S}    /:/  /       {P}\:\__\      {D}\::/  /       {L}\::/  /   {RST}{DIM}:{RST}
-{DIM}   :{RST}      {S}    \/__/         {P}\/__/       {D}\/__/         {L}\/__/    {RST}{DIM}:{RST}
-{DIM}   :                                                                :{RST}
-{DIM}   :    ░░░▒▒▒▓▓▓███████████████████████████████▓▓▓▒▒▒░░░          :{RST}
-{DIM}   ·── ── ─── ──── ───── ────── ─────── ────── ───── ──── ─── ── ──·{RST}
-{DIM}   :{RST} {BOLD}{YEL}  SharePoint Bulk Downloader{RST}  {DIM}v0.1                       :{RST}
-{DIM}   :  Ctrl+C cancel · Re-run to resume                     :{RST}
-{DIM}   ·── ── ─── ──── ───── ────── ─────── ────── ───── ──── ─── ── ──·{RST}
-"""
-    print(art)
+    """Print the title banner."""
+    console.print()
+    console.print("  [bold bright_cyan]SPDL[/bold bright_cyan] [dim]—[/dim] [bold]SharePoint Bulk Downloader[/bold]  [dim]v0.1[/dim]")
+    console.print("  [dim]@unstatusthequo · Ctrl+C cancel · Re-run to resume[/dim]")
+    console.print()
 
 
 def _section_header(number: str, title: str) -> None:
