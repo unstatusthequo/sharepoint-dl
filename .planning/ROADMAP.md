@@ -137,7 +137,7 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 07-01-PLAN.md — ETA/speed progress columns + timestamped log file module and wiring
+- [x] 07-01-PLAN.md — ETA/speed progress columns + timestamped log file module and wiring
 - [ ] 07-02-PLAN.md — Auto-detect root folder from sharing link (optional --root-folder)
 
 ### Phase 8: New Contained Modules
