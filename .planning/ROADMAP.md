@@ -121,7 +121,7 @@ Plans:
 
 - [x] **Phase 7: Zero-Risk UX Wins** - ETA/speed display, timestamped log file, and auto-detect folder from sharing link (completed 2026-03-30)
 - [ ] **Phase 8: New Contained Modules** - Config file, bandwidth throttle, and post-download verify command
-- [ ] **Phase 9: Batch and Session Resilience** - Multi-folder batch download and automatic mid-download session refresh
+- [x] **Phase 9: Batch and Session Resilience** - Multi-folder batch download and automatic mid-download session refresh (completed 2026-03-30)
 
 ## Phase Details
 
@@ -169,7 +169,7 @@ Plans:
 Plans:
 - [x] 09-01-PLAN.md — ReauthController class with check-lock-check pattern (TDD)
 - [x] 09-02-PLAN.md — Engine on_auth_expired callback + CLI ReauthController wiring
-- [ ] 09-03-PLAN.md — Batch queue UX with per-job subdirectories and summary table
+- [x] 09-03-PLAN.md — Batch queue UX with per-job subdirectories and summary table
 
 ## Progress
 
@@ -186,4 +186,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 6. Audit Evidence Normalization | v1.0 | 1/1 | Complete | 2026-03-27 |
 | 7. Zero-Risk UX Wins | v1.1 | 2/2 | Complete | 2026-03-30 |
 | 8. New Contained Modules | v1.1 | 1/2 | In Progress|  |
-| 9. Batch and Session Resilience | v1.1 | 2/3 | In Progress|  |
+| 9. Batch and Session Resilience | v1.1 | 3/3 | Complete   | 2026-03-30 |
