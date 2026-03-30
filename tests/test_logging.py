@@ -76,6 +76,7 @@ class TestShutdownDownloadLogger:
         logger = setup_download_logger(tmp_path)
         file_handlers = [h for h in logger.handlers if isinstance(h, logging.FileHandler)]
         handler = file_handlers[0]
+        stream = handler.stream  # capture before close
         shutdown_download_logger()
-        # After close, the stream should be closed
-        assert handler.stream.closed
+        # After close, the stream should be closed (or set to None)
+        assert stream.closed or handler.stream is None

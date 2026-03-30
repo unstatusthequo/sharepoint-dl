@@ -19,6 +19,7 @@ from rich.progress import (
     SpinnerColumn,
     TextColumn,
     TimeElapsedColumn,
+    TimeRemainingColumn,
     TransferSpeedColumn,
 )
 from tenacity import (
@@ -150,6 +151,7 @@ def _make_progress() -> Progress:
         BarColumn(bar_width=None, complete_style="bright_magenta", finished_style="bright_green"),
         DownloadColumn(binary_units=True),
         TransferSpeedColumn(),
+        TimeRemainingColumn(),
         TimeElapsedColumn(),
         TextColumn("{task.fields[status]}"),
     )
