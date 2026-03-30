@@ -164,7 +164,12 @@ Plans:
   2. Each batch job writes to its own subdirectory with its own `manifest.json`, `state.json`, and log file — no cross-job state collision
   3. When the session expires mid-download (401), the tool pauses workers, opens a browser window for re-authentication on the main thread, then resumes from the failed file — all without user re-running the command
   4. With 4+ concurrent workers all receiving 401, only one browser window opens; subsequent workers wait for the single re-auth to complete before retrying
-**Plans**: TBD
+**Plans**: 3 plans
+
+Plans:
+- [ ] 09-01-PLAN.md — ReauthController class with check-lock-check pattern (TDD)
+- [ ] 09-02-PLAN.md — Engine on_auth_expired callback + CLI ReauthController wiring
+- [ ] 09-03-PLAN.md — Batch queue UX with per-job subdirectories and summary table
 
 ## Progress
 
@@ -181,4 +186,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 6. Audit Evidence Normalization | v1.0 | 1/1 | Complete | 2026-03-27 |
 | 7. Zero-Risk UX Wins | v1.1 | 2/2 | Complete | 2026-03-30 |
 | 8. New Contained Modules | v1.1 | 1/2 | In Progress|  |
-| 9. Batch and Session Resilience | v1.1 | 0/TBD | Not started | - |
+| 9. Batch and Session Resilience | v1.1 | 0/3 | Not started | - |
