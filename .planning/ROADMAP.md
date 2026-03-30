@@ -1,12 +1,14 @@
 # Roadmap: SharePoint Bulk Downloader
 
-## Overview
+## Milestones
 
-Three phases, each a hard dependency on the previous. Phase 1 proves the authenticated session and file enumeration are correct before any download code is written - this is the forensic constraint, not a preference. Phase 2 builds the download engine with all reliability mechanisms from day one (streaming, retry, resume, explicit error tracking). Phase 3 produces the forensic deliverables: the manifest, completeness report, and CLI polish. The tool cannot be trusted until all three phases are complete.
-
-The v1.0 milestone audit found four blocker gaps and one planning normalization pass still needed before archival. Phases 4-6 close those gaps in dependency order: first harden resume/reporting behavior, then correct manifest evidence, then normalize the planning artifacts so a re-audit can pass cleanly.
+- ✅ **v1.0 MVP** - Phases 1-6 (shipped 2026-03-27)
+- 🚧 **v1.1 Feature Expansion** - Phases 7-9 (in progress)
 
 ## Phases
+
+<details>
+<summary>✅ v1.0 MVP (Phases 1-6) — SHIPPED 2026-03-27</summary>
 
 **Phase Numbering:**
 - Integer phases (1, 2, 3): Planned milestone work
@@ -21,8 +23,6 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 5: Manifest Path Accuracy** - Manifest local_path matches the real on-disk output path in every download mode (completed 2026-03-27)
 - [x] **Phase 6: Audit Evidence Normalization** - Planning artifacts reconciled so milestone re-audit can pass cleanly (completed 2026-03-27)
 
-## Phase Details
-
 ### Phase 1: Foundation
 **Goal**: User can authenticate against the real SharePoint link and get a verified, complete file listing before any download code exists
 **Depends on**: Nothing (first phase)
@@ -35,9 +35,9 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Plans**: 3 plans
 
 Plans:
-- [ ] 01-01-PLAN.md — Project scaffold + auth module (session harvest, persistence, validation)
-- [ ] 01-02-PLAN.md — Enumerator module (recursive traversal, pagination) + CLI wiring (typer subcommands, rich output)
-- [ ] 01-03-PLAN.md — Manual verification checkpoint (real auth flow + file count accuracy vs browser UI)
+- [x] 01-01-PLAN.md — Project scaffold + auth module (session harvest, persistence, validation)
+- [x] 01-02-PLAN.md — Enumerator module (recursive traversal, pagination) + CLI wiring (typer subcommands, rich output)
+- [x] 01-03-PLAN.md — Manual verification checkpoint (real auth flow + file count accuracy vs browser UI)
 
 ### Phase 2: Download Engine
 **Goal**: Every file downloads correctly — 2GB files stream without memory issues, interrupted runs resume cleanly, and no file is ever silently skipped
@@ -52,9 +52,9 @@ Plans:
 **Plans**: 3 plans
 
 Plans:
-- [ ] 02-01-PLAN.md — Job state module (atomic persistence, resume logic) + single-file download function (streaming, SHA-256, auth guard, retry)
-- [ ] 02-02-PLAN.md — Concurrent executor (ThreadPoolExecutor, auth halt) + Rich progress + CLI download command + error summary
-- [ ] 02-03-PLAN.md — Manual verification checkpoint (real SharePoint download, resume, progress display)
+- [x] 02-01-PLAN.md — Job state module (atomic persistence, resume logic) + single-file download function (streaming, SHA-256, auth guard, retry)
+- [x] 02-02-PLAN.md — Concurrent executor (ThreadPoolExecutor, auth halt) + Rich progress + CLI download command + error summary
+- [x] 02-03-PLAN.md — Manual verification checkpoint (real SharePoint download, resume, progress display)
 
 ### Phase 3: Forensic Deliverables
 **Goal**: User can hand a completed manifest to a third party as proof that every file in the SharePoint folder was downloaded and is intact
@@ -67,8 +67,8 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 03-01-PLAN.md — Manifest writer module (JobState accessor, JSON manifest generation with per-file metadata and SHA-256 from state)
-- [ ] 03-02-PLAN.md — Completeness report and CLI integration (expected vs downloaded count, manifest auto-generation, --no-manifest flag)
+- [x] 03-01-PLAN.md — Manifest writer module (JobState accessor, JSON manifest generation with per-file metadata and SHA-256 from state)
+- [x] 03-02-PLAN.md — Completeness report and CLI integration (expected vs downloaded count, manifest auto-generation, --no-manifest flag)
 
 ### Phase 4: Resume Safety and Failure Reporting
 **Goal**: Resume logic is path-safe, download runs always show pre-transfer scope, and auth-expiry failures still produce explicit end-of-run reporting
@@ -113,16 +113,65 @@ Plans:
 Plans:
 - [x] 06-01-PLAN.md — Verification-doc normalization for Phases 1-3 + roadmap plan-count/progress reconciliation
 
+</details>
+
+### 🚧 v1.1 Feature Expansion (In Progress)
+
+**Milestone Goal:** Make SPDL easier to use (auto-detect folder, config file, batch mode), more reliable during long downloads (session refresh, throttle), verifiable after download (verify command), and observable throughout (ETA, log file).
+
+- [ ] **Phase 7: Zero-Risk UX Wins** - ETA/speed display, timestamped log file, and auto-detect folder from sharing link
+- [ ] **Phase 8: New Contained Modules** - Config file, bandwidth throttle, and post-download verify command
+- [ ] **Phase 9: Batch and Session Resilience** - Multi-folder batch download and automatic mid-download session refresh
+
+## Phase Details
+
+### Phase 7: Zero-Risk UX Wins
+**Goal**: Users get visible download progress (speed and ETA), a durable audit log, and no longer need to manually specify the root folder from a sharing link
+**Depends on**: Phase 6
+**Requirements**: UX-01, UX-04, REL-03
+**Success Criteria** (what must be TRUE):
+  1. Progress bar shows current download speed and estimated time remaining during any active download run
+  2. After a completed run, a timestamped `download.log` file exists containing all events from that run in human-readable form
+  3. User can pass a SharePoint sharing link directly to `download` and the tool resolves the root folder path automatically, without a `--root-folder` flag
+  4. Log file output does not corrupt or interleave with the Rich TUI progress display
+**Plans**: TBD
+**UI hint**: yes
+
+### Phase 8: New Contained Modules
+**Goal**: Users can save settings so repeat runs need less input, cap bandwidth to avoid saturating the network, and re-verify downloaded files against the manifest without re-downloading
+**Depends on**: Phase 7
+**Requirements**: UX-03, REL-02, FOR-01
+**Success Criteria** (what must be TRUE):
+  1. After a successful run, `~/.sharepoint-dl/config.toml` is written with the SharePoint URL, destination, and worker count used; these values pre-fill on the next run
+  2. Explicit CLI arguments always override config file values; the config file is never mandatory
+  3. Running `spdl verify <dest_dir>` re-reads every file from disk, recomputes its SHA-256, and reports any hash mismatches or missing files against `manifest.json`
+  4. Running `spdl download --throttle 2MB` limits aggregate bandwidth across all workers to approximately 2 MB/s without causing `ChunkedEncodingError`
+**Plans**: TBD
+
+### Phase 9: Batch and Session Resilience
+**Goal**: Users can queue multiple custodian folders in one session without restarting, and unattended multi-hour runs survive session expiry automatically
+**Depends on**: Phase 8
+**Requirements**: UX-02, REL-01
+**Success Criteria** (what must be TRUE):
+  1. After a download completes, the TUI offers to queue another folder; the user can add a second folder path and it downloads sequentially in the same session without re-authenticating
+  2. Each batch job writes to its own subdirectory with its own `manifest.json`, `state.json`, and log file — no cross-job state collision
+  3. When the session expires mid-download (401), the tool pauses workers, opens a browser window for re-authentication on the main thread, then resumes from the failed file — all without user re-running the command
+  4. With 4+ concurrent workers all receiving 401, only one browser window opens; subsequent workers wait for the single re-auth to complete before retrying
+**Plans**: TBD
+
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6
+Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 9
 
-| Phase | Plans Complete | Status | Completed |
-|-------|----------------|--------|-----------|
-| 1. Foundation | 3/3 | Complete    | 2026-03-27 |
-| 2. Download Engine | 3/3 | Complete    | 2026-03-27 |
-| 3. Forensic Deliverables | 2/2 | Complete    | 2026-03-27 |
-| 4. Resume Safety and Failure Reporting | 2/2 | Complete   | 2026-03-27 |
-| 5. Manifest Path Accuracy | 1/1 | Complete | 2026-03-27 |
-| 6. Audit Evidence Normalization | 1/1 | Complete | 2026-03-27 |
+| Phase | Milestone | Plans Complete | Status | Completed |
+|-------|-----------|----------------|--------|-----------|
+| 1. Foundation | v1.0 | 3/3 | Complete | 2026-03-27 |
+| 2. Download Engine | v1.0 | 3/3 | Complete | 2026-03-27 |
+| 3. Forensic Deliverables | v1.0 | 2/2 | Complete | 2026-03-27 |
+| 4. Resume Safety and Failure Reporting | v1.0 | 2/2 | Complete | 2026-03-27 |
+| 5. Manifest Path Accuracy | v1.0 | 1/1 | Complete | 2026-03-27 |
+| 6. Audit Evidence Normalization | v1.0 | 1/1 | Complete | 2026-03-27 |
+| 7. Zero-Risk UX Wins | v1.1 | 0/TBD | Not started | - |
+| 8. New Contained Modules | v1.1 | 0/TBD | Not started | - |
+| 9. Batch and Session Resilience | v1.1 | 0/TBD | Not started | - |

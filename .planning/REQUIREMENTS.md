@@ -139,20 +139,20 @@ Deferred to future release. Tracked but not in current roadmap.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| UX-01 | — | Pending |
-| UX-02 | — | Pending |
-| UX-03 | — | Pending |
-| UX-04 | — | Pending |
-| REL-01 | — | Pending |
-| REL-02 | — | Pending |
-| REL-03 | — | Pending |
-| FOR-01 | — | Pending |
+| UX-01 | Phase 7 | Pending |
+| UX-04 | Phase 7 | Pending |
+| REL-03 | Phase 7 | Pending |
+| UX-03 | Phase 8 | Pending |
+| REL-02 | Phase 8 | Pending |
+| FOR-01 | Phase 8 | Pending |
+| UX-02 | Phase 9 | Pending |
+| REL-01 | Phase 9 | Pending |
 
 **Coverage:**
 - v1.0 requirements: 17/17 complete
-- v1.1 requirements: 8 total, 0 mapped
-- Unmapped: 8
+- v1.1 requirements: 8/8 mapped
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-27*
-*Last updated: 2026-03-30 — v1.1 requirements added*
+*Last updated: 2026-03-30 — v1.1 traceability mapped to Phases 7-9*
