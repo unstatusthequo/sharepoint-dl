@@ -35,7 +35,7 @@ from sharepoint_dl.enumerator.traversal import AuthExpiredError, FileEntry
 from sharepoint_dl.state.job_state import FileStatus, JobState, derive_local_relative_path
 
 if TYPE_CHECKING:
-    pass
+    from sharepoint_dl.downloader.throttle import TokenBucket
 
 logger = logging.getLogger(__name__)
 
@@ -104,6 +104,7 @@ def _download_file(
     dest_path: Path,
     site_url: str,
     on_chunk: Callable[[int], None] | None = None,
+    throttle: "TokenBucket | None" = None,
 ) -> str:
     """Download one file, stream to .part, compute SHA-256, rename on success.
 
@@ -142,6 +143,8 @@ def _download_file(
                 sha256.update(chunk)
                 if on_chunk:
                     on_chunk(len(chunk))
+                if throttle is not None:
+                    throttle.consume(len(chunk))
 
     # Size verification
     expected = file_entry.size_bytes
@@ -176,6 +179,7 @@ def download_all(
     workers: int = 3,
     progress: Progress | None = None,
     flat: bool = False,
+    throttle: "TokenBucket | None" = None,
 ) -> tuple[list[str], list[tuple[str, str]]]:
     """Orchestrate concurrent file downloads with progress and auth halt.
 
@@ -191,6 +195,7 @@ def download_all(
         site_url: SharePoint site URL.
         workers: Number of concurrent download workers (default 3).
         progress: Optional Rich Progress instance for visual feedback.
+        throttle: Optional shared TokenBucket for bandwidth limiting.
 
     Returns:
         Tuple of (completed_urls, failed_entries) where failed_entries
@@ -264,7 +269,9 @@ def download_all(
 
         try:
             logger.info("Downloading: %s (%s)", file_entry.name, _format_size_bytes(file_entry.size_bytes))
-            sha = _download_file(session, file_entry, dest_path, site_url, on_chunk=on_chunk)
+            sha = _download_file(
+                session, file_entry, dest_path, site_url, on_chunk=on_chunk, throttle=throttle
+            )
             state.set_status(
                 url,
                 FileStatus.COMPLETE,

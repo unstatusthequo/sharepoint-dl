@@ -16,10 +16,13 @@ from rich.table import Table
 from sharepoint_dl.auth.browser import harvest_session
 from sharepoint_dl.cli.resolve import resolve_folder_from_browser_url, resolve_sharing_link
 from sharepoint_dl.auth.session import load_session, validate_session
+from sharepoint_dl.config import load_config, save_config
 from sharepoint_dl.downloader.engine import _make_progress, download_all
 from sharepoint_dl.downloader.log import setup_download_logger, shutdown_download_logger
+from sharepoint_dl.downloader.throttle import TokenBucket, parse_throttle
 from sharepoint_dl.enumerator.traversal import AuthExpiredError, enumerate_files
 from sharepoint_dl.manifest import generate_manifest
+from sharepoint_dl.manifest.verifier import verify_manifest
 from sharepoint_dl.state.job_state import JobState
 
 app = typer.Typer(
@@ -113,6 +116,9 @@ def _error(text: str) -> None:
 def _interactive_mode_inner() -> None:
     """Inner interactive flow — separated so KeyboardInterrupt is caught cleanly."""
     import os
+
+    # Load saved config to pre-fill prompts
+    cfg = load_config()
 
     os.system("cls" if os.name == "nt" else "clear")
     _print_banner()
@@ -237,7 +243,7 @@ def _interactive_mode_inner() -> None:
     # Step 5: Download destination
     _section_header("04", "CONFIGURATION")
 
-    default_dest = str(Path.home() / "Downloads" / "sharepoint-dl")
+    default_dest = cfg["download_dest"] or str(Path.home() / "Downloads" / "sharepoint-dl")
     dest_str = Prompt.ask(
         "    [bold]Download destination[/bold]",
         default=default_dest,
@@ -247,7 +253,7 @@ def _interactive_mode_inner() -> None:
     # Step 6: Workers
     workers = IntPrompt.ask(
         "    [bold]Parallel workers[/bold] (1-8)",
-        default=3,
+        default=cfg["workers"],
     )
     workers = max(1, min(8, workers))
 
@@ -389,12 +395,66 @@ def _interactive_mode_inner() -> None:
     if failed:
         raise typer.Exit(code=1)
 
+    # Save config after successful download (no failures, not cancelled, not auth_expired)
+    try:
+        save_config({
+            "sharepoint_url": sharing_url,
+            "download_dest": str(dest),
+            "workers": workers,
+            "flat": True,
+        })
+    except Exception:
+        pass  # Config save is best-effort
+
     avg_speed = total_size / elapsed if elapsed > 0 else 0
     console.print(
         f"\n  [bold bright_green]Done![/bold bright_green] {len(completed)} files "
         f"({_format_size(total_size)}) in {elapsed:.1f}s "
         f"({_format_size(int(avg_speed))}/s)"
     )
+
+    # Offer post-download verification
+    console.print()
+    if Confirm.ask("  [bold]Verify downloaded files?[/bold]", default=False):
+        _section_header("06", "VERIFICATION")
+        try:
+            from rich.progress import BarColumn, DownloadColumn, Progress, SpinnerColumn, TextColumn
+            import json as _json
+
+            manifest_path_local = dest / "manifest.json"
+            if not manifest_path_local.exists():
+                _warn("No manifest.json found — skipping verification.")
+            else:
+                manifest_data = _json.loads(manifest_path_local.read_text(encoding="utf-8"))
+                total_bytes = sum(
+                    f.get("size_bytes", 0) for f in manifest_data.get("files", [])
+                )
+
+                with Progress(
+                    SpinnerColumn(style="bright_magenta"),
+                    TextColumn("[bright_cyan]{task.description}[/bright_cyan]"),
+                    BarColumn(bar_width=None, complete_style="bright_magenta", finished_style="bright_green"),
+                    DownloadColumn(binary_units=True),
+                    console=console,
+                ) as vp:
+                    task_id = vp.add_task("Verifying files", total=total_bytes)
+
+                    def on_progress(name: str, size_bytes: int) -> None:
+                        vp.update(task_id, advance=size_bytes)
+
+                    summary = verify_manifest(dest, on_progress=on_progress)
+
+                if summary.failed == 0 and summary.missing == 0:
+                    _success(f"{summary.passed}/{summary.total} files verified OK")
+                else:
+                    parts = []
+                    if summary.failed > 0:
+                        parts.append(f"{summary.failed} FAIL")
+                    if summary.missing > 0:
+                        parts.append(f"{summary.missing} MISSING")
+                    _error(f"Verification issues: {', '.join(parts)}")
+        except Exception as exc:
+            _warn(f"Verification error: {exc}")
 
 
 def _format_size(size_bytes: int) -> str:
@@ -464,6 +524,91 @@ def auth(
             "[red]Authentication timed out. Please try again and complete login "
             "within the timeout window.[/red]"
         )
+        raise typer.Exit(code=1)
+
+
+@app.command()
+def verify(
+    dest: Path = typer.Argument(..., help="Download destination directory containing manifest.json"),
+) -> None:
+    """Verify downloaded files against their manifest SHA-256 hashes."""
+    from rich.progress import BarColumn, DownloadColumn, Progress, SpinnerColumn, TextColumn
+    from rich.table import Table
+
+    try:
+        with Progress(
+            SpinnerColumn(style="bright_magenta"),
+            TextColumn("[bright_cyan]{task.description}[/bright_cyan]"),
+            BarColumn(bar_width=None, complete_style="bright_magenta", finished_style="bright_green"),
+            DownloadColumn(binary_units=True),
+            console=console,
+        ) as progress:
+            task_id = None
+
+            def on_progress(name: str, size_bytes: int) -> None:
+                nonlocal task_id
+                if task_id is not None:
+                    progress.update(task_id, advance=size_bytes)
+
+            # First pass: get total size for progress bar
+            import json as _json
+            manifest_path = dest / "manifest.json"
+            if not manifest_path.exists():
+                console.print("[red]No manifest.json found in the specified directory.[/red]")
+                raise typer.Exit(code=1)
+
+            manifest_data = _json.loads(manifest_path.read_text(encoding="utf-8"))
+            total_bytes = sum(
+                f.get("size_bytes", 0) for f in manifest_data.get("files", [])
+            )
+
+            task_id = progress.add_task("Verifying files", total=total_bytes)
+            summary = verify_manifest(dest, on_progress=on_progress)
+
+    except FileNotFoundError:
+        console.print("[red]No manifest.json found in the specified directory.[/red]")
+        raise typer.Exit(code=1)
+
+    # Print results table
+    table = Table(
+        title="[bold bright_cyan]Verification Results[/bold bright_cyan]",
+        border_style="bright_cyan",
+    )
+    table.add_column("File", style="bright_cyan")
+    table.add_column("Status", justify="center")
+    table.add_column("Expected SHA-256", style="dim")
+    table.add_column("Actual SHA-256", style="dim")
+
+    for result in summary.results:
+        if result.status == "PASS":
+            status_text = "[bold bright_green]PASS[/bold bright_green]"
+        elif result.status == "FAIL":
+            status_text = "[bold bright_red]FAIL[/bold bright_red]"
+        else:
+            status_text = "[bold bright_yellow]MISSING[/bold bright_yellow]"
+
+        expected_short = result.expected_sha256[:16] + "..."
+        actual_short = (result.actual_sha256[:16] + "...") if result.actual_sha256 else "—"
+
+        table.add_row(result.name, status_text, expected_short, actual_short)
+
+    console.print(table)
+
+    # Print summary
+    console.print()
+    if summary.failed == 0 and summary.missing == 0:
+        console.print(
+            f"  [bold bright_green]{summary.passed}/{summary.total} files verified OK[/bold bright_green]"
+        )
+    else:
+        parts = []
+        if summary.passed > 0:
+            parts.append(f"[bright_green]{summary.passed} OK[/bright_green]")
+        if summary.failed > 0:
+            parts.append(f"[bright_red]{summary.failed} failed[/bright_red]")
+        if summary.missing > 0:
+            parts.append(f"[bright_yellow]{summary.missing} missing[/bright_yellow]")
+        console.print(f"  {' · '.join(parts)}")
         raise typer.Exit(code=1)
 
 
@@ -576,8 +721,35 @@ def download(
         "--no-manifest",
         help="Skip manifest.json generation (for testing/debugging only)",
     ),
+    throttle_str: str | None = typer.Option(
+        None,
+        "--throttle",
+        help="Bandwidth limit (e.g. 10MB, 50MB, 500KB). Shared across all workers.",
+        show_default=False,
+    ),
 ) -> None:
     """Download all files from a SharePoint folder."""
+    # Load config to pre-fill defaults
+    cfg = load_config()
+
+    # Apply config defaults for options not explicitly set by the user
+    # Typer uses the declared defaults (3 for workers, False for flat) so compare to those
+    if workers == 3 and cfg["workers"] != 3:
+        workers = cfg["workers"]
+    if not flat and cfg["flat"]:
+        flat = cfg["flat"]
+
+    # Parse throttle
+    throttle_bucket: TokenBucket | None = None
+    if throttle_str is not None:
+        try:
+            rate_bps = parse_throttle(throttle_str)
+        except ValueError as exc:
+            console.print(f"[red]Invalid --throttle value: {exc}[/red]")
+            raise typer.Exit(code=1)
+        if rate_bps is not None:
+            throttle_bucket = TokenBucket(rate_bps)
+
     # 1. Load session
     session = load_session(url)
     if session is None:
@@ -646,6 +818,8 @@ def download(
         "Starting download: %d files, %d workers, dest=%s, flat=%s",
         count, workers, dest, flat,
     )
+    if throttle_bucket is not None:
+        dl_logger.info("Throttling to %s", throttle_str)
 
     # 7-8. Download with progress
     start_time = time.time()
@@ -665,6 +839,7 @@ def download(
                 workers=workers,
                 progress=progress,
                 flat=flat,
+                throttle=throttle_bucket,
             )
     except AuthExpiredError:
         auth_expired = True
@@ -758,6 +933,17 @@ def download(
             "Completed files will be skipped on resume.[/red]"
         )
         raise typer.Exit(code=1)
+
+    # Save config after successful download
+    try:
+        save_config({
+            "sharepoint_url": url,
+            "download_dest": str(dest),
+            "workers": workers,
+            "flat": flat,
+        })
+    except Exception:
+        pass  # Config save is best-effort; don't fail the download
 
     # 12. Success summary
     avg_speed = total_size / elapsed if elapsed > 0 else 0
