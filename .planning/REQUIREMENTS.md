@@ -76,9 +76,44 @@ Deferred to future release. Tracked but not in current roadmap.
 | Microsoft Graph API auth | Guest OTP/B2B access doesn't support app registration |
 | Real-time notifications | Not needed for batch download tool |
 
+## v1.1 Requirements
+
+**Milestone:** v1.1 Feature Expansion
+**Defined:** 2026-03-30
+
+### UX
+
+- [ ] **UX-01**: Tool auto-detects the shared folder path from the sharing link URL (no manual `-r` flag needed)
+- [ ] **UX-02**: User can queue multiple folders for download in a single interactive session
+- [ ] **UX-03**: Tool saves default settings (SharePoint URL, destination, workers) to a config file and loads them on startup
+- [ ] **UX-04**: Progress display shows estimated time remaining and current download speed
+
+### Reliability
+
+- [ ] **REL-01**: Tool automatically re-authenticates mid-download when session expires (no manual re-run)
+- [ ] **REL-02**: User can limit download bandwidth via `--throttle` flag
+- [ ] **REL-03**: Tool writes a timestamped log file (`download.log`) with all events for audit trail
+
+### Forensics
+
+- [ ] **FOR-01**: User can run a `verify` command that re-reads files from disk, recomputes SHA-256, and compares against manifest.json
+
+## v1.1 Deferred
+
+- **DIST-01**: Publish to PyPI (deferred — `spdl` name taken, need to resolve naming)
+
+## Out of Scope
+
+| Feature | Reason |
+|---------|--------|
+| Upload capability | Download-only tool |
+| Incremental sync | Full download, not ongoing sync |
+| Microsoft Graph API auth | Guest OTP/B2B doesn't support app registration |
+| PyPI publish (v1.1) | Deferred — name conflict, keep repo distribution for now |
+
 ## Traceability
 
-Which phases cover which requirements. Updated during roadmap creation.
+### v1.0 (Complete)
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
@@ -100,13 +135,24 @@ Which phases cover which requirements. Updated during roadmap creation.
 | VRFY-02 | Phase 5 | Complete |
 | VRFY-03 | Phase 3 | Complete |
 
+### v1.1 (Active)
+
+| Requirement | Phase | Status |
+|-------------|-------|--------|
+| UX-01 | — | Pending |
+| UX-02 | — | Pending |
+| UX-03 | — | Pending |
+| UX-04 | — | Pending |
+| REL-01 | — | Pending |
+| REL-02 | — | Pending |
+| REL-03 | — | Pending |
+| FOR-01 | — | Pending |
+
 **Coverage:**
-- v1 requirements: 17 total
-- Mapped to phases: 17
-- Fully satisfied: 17
-- Pending gap closure: 0
-- Unmapped: 0
+- v1.0 requirements: 17/17 complete
+- v1.1 requirements: 8 total, 0 mapped
+- Unmapped: 8
 
 ---
 *Requirements defined: 2026-03-27*
-*Last updated: 2026-03-27 — Phase 05 verified complete*
+*Last updated: 2026-03-30 — v1.1 requirements added*
