@@ -8,6 +8,7 @@ import pytest
 from typer.testing import CliRunner
 
 from sharepoint_dl.cli.main import app
+from sharepoint_dl.cli.resolve import resolve_folder_from_browser_url, resolve_sharing_link
 from sharepoint_dl.enumerator.traversal import AuthExpiredError, FileEntry
 from sharepoint_dl.state.job_state import FileStatus, JobState
 
@@ -15,6 +16,185 @@ runner = CliRunner()
 
 SITE_URL = "https://contoso.sharepoint.com/sites/shared"
 TEST_URL = "https://contoso.sharepoint.com/sites/shared/Shared%20Documents/Images"
+
+
+# ---------------------------------------------------------------------------
+# Tests for sharepoint_dl.cli.resolve
+# ---------------------------------------------------------------------------
+
+
+class TestResolveFolderFromBrowserUrl:
+    """resolve_folder_from_browser_url extracts id= from SharePoint URLs."""
+
+    def test_extracts_id_from_query_string(self):
+        url = (
+            "https://contoso.sharepoint.com/sites/shared/_layouts/15/onedrive.aspx"
+            "?id=%2Fsites%2Fshared%2FShared%20Documents%2FImages"
+        )
+        result = resolve_folder_from_browser_url(url)
+        assert result == "/sites/shared/Shared Documents/Images"
+
+    def test_extracts_id_from_fragment(self):
+        url = (
+            "https://contoso.sharepoint.com/sites/shared/_layouts/15/onedrive.aspx"
+            "#id=%2Fsites%2Fshared%2FShared%20Documents%2FImages"
+        )
+        result = resolve_folder_from_browser_url(url)
+        assert result == "/sites/shared/Shared Documents/Images"
+
+    def test_returns_none_when_no_id_present(self):
+        url = "https://contoso.sharepoint.com/sites/shared/_layouts/15/onedrive.aspx?view=list"
+        result = resolve_folder_from_browser_url(url)
+        assert result is None
+
+
+class TestResolveSharingLink:
+    """resolve_sharing_link follows redirect and extracts folder."""
+
+    def test_follows_redirect_and_extracts_folder(self):
+        """Successful redirect — extracts folder from final URL."""
+        mock_session = MagicMock()
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.url = (
+            "https://contoso.sharepoint.com/sites/shared/_layouts/15/onedrive.aspx"
+            "?id=%2Fsites%2Fshared%2FShared%20Documents%2FImages"
+        )
+        mock_session.get.return_value = mock_resp
+
+        result = resolve_sharing_link(mock_session, "https://contoso.sharepoint.com/:f:/s/shared/abc123")
+        assert result == "/sites/shared/Shared Documents/Images"
+        mock_session.get.assert_called_once()
+
+    def test_returns_none_on_request_failure(self):
+        """Request exception — returns None."""
+        mock_session = MagicMock()
+        mock_session.get.side_effect = Exception("Connection error")
+
+        result = resolve_sharing_link(mock_session, "https://contoso.sharepoint.com/:f:/s/shared/abc123")
+        assert result is None
+
+
+class TestAutoDetectFallback:
+    """CLI commands auto-detect folder when -r is omitted."""
+
+    @patch("sharepoint_dl.cli.main.resolve_sharing_link")
+    @patch("sharepoint_dl.cli.main.enumerate_files")
+    @patch("sharepoint_dl.cli.main.validate_session")
+    @patch("sharepoint_dl.cli.main.load_session")
+    def test_download_without_r_calls_resolve(
+        self, mock_load, mock_validate, mock_enum, mock_resolve
+    ):
+        """download without -r calls resolve_sharing_link as fallback."""
+        mock_session = MagicMock()
+        mock_load.return_value = mock_session
+        mock_validate.return_value = True
+        mock_resolve.return_value = "/sites/shared/Shared Documents/Images"
+        mock_enum.return_value = []  # no files — exits cleanly
+
+        result = runner.invoke(
+            app,
+            ["download", TEST_URL, "/tmp/dest", "--yes"],
+        )
+
+        mock_resolve.assert_called_once_with(mock_session, TEST_URL)
+
+    @patch("sharepoint_dl.cli.main.resolve_sharing_link")
+    @patch("sharepoint_dl.cli.main.enumerate_files")
+    @patch("sharepoint_dl.cli.main.validate_session")
+    @patch("sharepoint_dl.cli.main.load_session")
+    def test_list_without_r_calls_resolve(
+        self, mock_load, mock_validate, mock_enum, mock_resolve
+    ):
+        """list without -r calls resolve_sharing_link as fallback."""
+        mock_session = MagicMock()
+        mock_load.return_value = mock_session
+        mock_validate.return_value = True
+        mock_resolve.return_value = "/sites/shared/Shared Documents/Images"
+        mock_enum.return_value = []
+
+        result = runner.invoke(
+            app,
+            ["list", TEST_URL],
+        )
+
+        mock_resolve.assert_called_once_with(mock_session, TEST_URL)
+
+    @patch("sharepoint_dl.cli.main.resolve_sharing_link")
+    @patch("sharepoint_dl.cli.main.enumerate_files")
+    @patch("sharepoint_dl.cli.main.validate_session")
+    @patch("sharepoint_dl.cli.main.load_session")
+    def test_download_with_explicit_r_does_not_call_resolve(
+        self, mock_load, mock_validate, mock_enum, mock_resolve
+    ):
+        """download with explicit -r uses that value, does not call resolve."""
+        mock_load.return_value = MagicMock()
+        mock_validate.return_value = True
+        mock_enum.return_value = []
+
+        result = runner.invoke(
+            app,
+            ["download", TEST_URL, "/tmp/dest", "-r", "/explicit/path", "--yes"],
+        )
+
+        mock_resolve.assert_not_called()
+
+    @patch("sharepoint_dl.cli.main.resolve_sharing_link")
+    @patch("sharepoint_dl.cli.main.enumerate_files")
+    @patch("sharepoint_dl.cli.main.validate_session")
+    @patch("sharepoint_dl.cli.main.load_session")
+    def test_list_with_explicit_r_does_not_call_resolve(
+        self, mock_load, mock_validate, mock_enum, mock_resolve
+    ):
+        """list with explicit -r uses that value, does not call resolve."""
+        mock_load.return_value = MagicMock()
+        mock_validate.return_value = True
+        mock_enum.return_value = []
+
+        result = runner.invoke(
+            app,
+            ["list", TEST_URL, "-r", "/explicit/path"],
+        )
+
+        mock_resolve.assert_not_called()
+
+    @patch("sharepoint_dl.cli.main.resolve_sharing_link")
+    @patch("sharepoint_dl.cli.main.validate_session")
+    @patch("sharepoint_dl.cli.main.load_session")
+    def test_download_without_r_exits_1_when_resolve_fails(
+        self, mock_load, mock_validate, mock_resolve
+    ):
+        """download without -r and failed auto-detect prints error and exits 1."""
+        mock_load.return_value = MagicMock()
+        mock_validate.return_value = True
+        mock_resolve.return_value = None
+
+        result = runner.invoke(
+            app,
+            ["download", TEST_URL, "/tmp/dest", "--yes"],
+        )
+
+        assert result.exit_code == 1
+        assert "auto-detect" in result.output.lower() or "--root-folder" in result.output
+
+    @patch("sharepoint_dl.cli.main.resolve_sharing_link")
+    @patch("sharepoint_dl.cli.main.validate_session")
+    @patch("sharepoint_dl.cli.main.load_session")
+    def test_list_without_r_exits_1_when_resolve_fails(
+        self, mock_load, mock_validate, mock_resolve
+    ):
+        """list without -r and failed auto-detect prints error and exits 1."""
+        mock_load.return_value = MagicMock()
+        mock_validate.return_value = True
+        mock_resolve.return_value = None
+
+        result = runner.invoke(
+            app,
+            ["list", TEST_URL],
+        )
+
+        assert result.exit_code == 1
+        assert "auto-detect" in result.output.lower() or "--root-folder" in result.output
 
 
 class TestAuthCommand:
