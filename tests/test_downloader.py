@@ -15,6 +15,7 @@ from sharepoint_dl.downloader.engine import (
     CHUNK_SIZE,
     _build_download_url,
     _download_file,
+    _make_progress,
     download_all,
 )
 from sharepoint_dl.enumerator.traversal import AuthExpiredError, FileEntry
@@ -240,6 +241,22 @@ class TestRetryAfter:
 
         assert dest.exists()
         assert session.get.call_count == 2
+
+
+class TestMakeProgress:
+    """_make_progress() includes expected columns."""
+
+    def test_has_time_remaining_column(self):
+        from rich.progress import TimeRemainingColumn
+        progress = _make_progress()
+        column_types = [type(c) for c in progress.columns]
+        assert TimeRemainingColumn in column_types
+
+    def test_still_has_transfer_speed_column(self):
+        from rich.progress import TransferSpeedColumn
+        progress = _make_progress()
+        column_types = [type(c) for c in progress.columns]
+        assert TransferSpeedColumn in column_types
 
 
 class TestDownloadUrl:
