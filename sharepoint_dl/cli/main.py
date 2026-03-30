@@ -16,6 +16,7 @@ from rich.table import Table
 from sharepoint_dl.auth.browser import harvest_session
 from sharepoint_dl.auth.session import load_session, validate_session
 from sharepoint_dl.downloader.engine import _make_progress, download_all
+from sharepoint_dl.downloader.log import setup_download_logger, shutdown_download_logger
 from sharepoint_dl.enumerator.traversal import AuthExpiredError, enumerate_files
 from sharepoint_dl.manifest import generate_manifest
 from sharepoint_dl.state.job_state import JobState
@@ -309,6 +310,14 @@ def _interactive_mode_inner() -> None:
 
     # Execute download
     dest.mkdir(parents=True, exist_ok=True)
+    dl_logger = setup_download_logger(dest)
+    dl_logger.info("Session validated for %s", site_url)
+    dl_logger.info("Enumerated %d files (%s total)", len(files), _format_size(total_size))
+    dl_logger.info(
+        "Starting download: %d files, %d workers, dest=%s, flat=True",
+        len(files), workers, dest,
+    )
+
     start_time = time.time()
     auth_expired = False
     completed: list[str] = []
@@ -328,21 +337,42 @@ def _interactive_mode_inner() -> None:
         state = JobState(dest)
         completed = state.complete_files()
         failed = state.failed_files()
+        dl_logger.error(
+            "Session expired during download -- %d completed, %d failed",
+            len(completed), len(failed),
+        )
     except KeyboardInterrupt:
         cancelled = True
         console.print("\n\n[yellow]Cancelled — saving progress...[/yellow]")
         state = JobState(dest)
         completed = state.complete_files()
         failed = state.failed_files()
+        dl_logger.warning("Download cancelled by user -- %d completed", len(completed))
     else:
         state = JobState(dest)
+    finally:
+        elapsed = time.time() - start_time
 
-    elapsed = time.time() - start_time
-
-    # Manifest (even on cancel — captures what completed so far)
+    # Manifest (even on cancel -- captures what completed so far)
     manifest_path = None
     if state is not None and completed:
         manifest_path = generate_manifest(state, dest, sharing_url, server_relative_path, flat=True)
+        if manifest_path:
+            dl_logger.info("Manifest written: %s", manifest_path)
+
+    # Log completeness and failures
+    dl_logger.info(
+        "Completeness: %d expected, %d downloaded, %d failed",
+        len(files), len(completed), len(failed),
+    )
+    if not auth_expired and not cancelled and not failed:
+        dl_logger.info(
+            "Download complete: %d files (%s) in %.1fs",
+            len(completed), _format_size(total_size), elapsed,
+        )
+    for file_url, reason in failed:
+        dl_logger.error("Failed: %s -- %s", file_url, reason)
+    shutdown_download_logger()
 
     # Report
     remaining = len(files) - len(completed) - len(failed)
@@ -625,6 +655,13 @@ def download(
 
     # 6. Create destination directory
     dest.mkdir(parents=True, exist_ok=True)
+    dl_logger = setup_download_logger(dest)
+    dl_logger.info("Session validated for %s", site_url)
+    dl_logger.info("Enumerated %d files (%s total)", len(files), _format_size(total_size))
+    dl_logger.info(
+        "Starting download: %d files, %d workers, dest=%s, flat=%s",
+        count, workers, dest, flat,
+    )
 
     # 7-8. Download with progress
     start_time = time.time()
@@ -650,21 +687,42 @@ def download(
         state = JobState(dest)
         completed = state.complete_files()
         failed = state.failed_files()
+        dl_logger.error(
+            "Session expired during download -- %d completed, %d failed",
+            len(completed), len(failed),
+        )
     except KeyboardInterrupt:
         cancelled = True
         console.print("\n\n[yellow]Cancelled — saving progress...[/yellow]")
         state = JobState(dest)
         completed = state.complete_files()
         failed = state.failed_files()
+        dl_logger.warning("Download cancelled by user -- %d completed", len(completed))
     else:
         state = JobState(dest)
-
-    elapsed = time.time() - start_time
+    finally:
+        elapsed = time.time() - start_time
 
     # 9. Manifest generation
     manifest_path = None
     if not no_manifest and state is not None:
         manifest_path = generate_manifest(state, dest, url, root_folder, flat=flat)
+        if manifest_path:
+            dl_logger.info("Manifest written: %s", manifest_path)
+
+    # Log completeness and failures
+    dl_logger.info(
+        "Completeness: %d expected, %d downloaded, %d failed",
+        len(files), len(completed), len(failed),
+    )
+    if not auth_expired and not cancelled and not failed:
+        dl_logger.info(
+            "Download complete: %d files (%s) in %.1fs",
+            len(completed), _format_size(total_size), elapsed,
+        )
+    for file_url, reason in failed:
+        dl_logger.error("Failed: %s -- %s", file_url, reason)
+    shutdown_download_logger()
 
     # 10. Completeness report
     status_ok = not auth_expired and len(failed) == 0

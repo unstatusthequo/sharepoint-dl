@@ -42,6 +42,17 @@ logger = logging.getLogger(__name__)
 CHUNK_SIZE = 8_388_608  # 8 MB
 
 
+def _format_size_bytes(size_bytes: int) -> str:
+    """Format bytes as human-readable size (local helper to avoid circular imports)."""
+    if size_bytes < 1024:
+        return f"{size_bytes} B"
+    elif size_bytes < 1024 * 1024:
+        return f"{size_bytes / 1024:.1f} KB"
+    elif size_bytes < 1024 * 1024 * 1024:
+        return f"{size_bytes / (1024 * 1024):.1f} MB"
+    return f"{size_bytes / (1024 * 1024 * 1024):.1f} GB"
+
+
 def _build_download_url(site_url: str, server_relative_url: str) -> str:
     """Build the download.aspx URL for a file.
 
@@ -252,6 +263,7 @@ def download_all(
             on_chunk = None  # type: ignore[assignment]
 
         try:
+            logger.info("Downloading: %s (%s)", file_entry.name, _format_size_bytes(file_entry.size_bytes))
             sha = _download_file(session, file_entry, dest_path, site_url, on_chunk=on_chunk)
             state.set_status(
                 url,
@@ -259,6 +271,7 @@ def download_all(
                 sha256=sha,
                 downloaded_at=datetime.now(timezone.utc).isoformat(),
             )
+            logger.info("Complete: %s (SHA-256: %s...)", file_entry.name, sha[:16])
             nonlocal completed_count
             completed_count += 1
             if progress is not None and my_task is not None:
@@ -272,9 +285,11 @@ def download_all(
             auth_halt.set()
             auth_error.append(e)
             state.set_status(url, FileStatus.FAILED, error="auth_expired")
+            logger.error("Failed: %s -- auth expired", file_entry.name)
             raise
         except Exception as e:
             state.set_status(url, FileStatus.FAILED, error=str(e))
+            logger.error("Failed: %s -- %s", file_entry.name, str(e))
             raise
 
     with ThreadPoolExecutor(max_workers=workers) as executor:
