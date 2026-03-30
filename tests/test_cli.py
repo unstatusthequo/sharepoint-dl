@@ -695,8 +695,9 @@ class TestManifestIntegration:
     @patch("sharepoint_dl.cli.main.enumerate_files")
     @patch("sharepoint_dl.cli.main.validate_session")
     @patch("sharepoint_dl.cli.main.load_session")
+    @patch("sharepoint_dl.cli.main.load_config", return_value={"sharepoint_url": "", "download_dest": "", "workers": 3, "flat": False})
     def test_generate_manifest_called_after_download(
-        self, mock_load, mock_validate, mock_enum, mock_progress, mock_dl,
+        self, _mock_cfg, mock_load, mock_validate, mock_enum, mock_progress, mock_dl,
         mock_job_state, mock_gen_manifest,
     ):
         """generate_manifest is called with correct args after successful download."""
