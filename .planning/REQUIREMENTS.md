@@ -90,7 +90,7 @@ Deferred to future release. Tracked but not in current roadmap.
 
 ### Reliability
 
-- [ ] **REL-01**: Tool automatically re-authenticates mid-download when session expires (no manual re-run)
+- [x] **REL-01**: Tool automatically re-authenticates mid-download when session expires (no manual re-run)
 - [x] **REL-02**: User can limit download bandwidth via `--throttle` flag
 - [x] **REL-03**: Tool writes a timestamped log file (`download.log`) with all events for audit trail
 
@@ -146,7 +146,7 @@ Deferred to future release. Tracked but not in current roadmap.
 | REL-02 | Phase 8 | Complete |
 | FOR-01 | Phase 8 | Complete |
 | UX-02 | Phase 9 | Pending |
-| REL-01 | Phase 9 | Pending |
+| REL-01 | Phase 9 | Complete |
 
 **Coverage:**
 - v1.0 requirements: 17/17 complete

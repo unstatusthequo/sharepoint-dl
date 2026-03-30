@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Feature Expansion
-status: completed
-stopped_at: Phase 9 context gathered
-last_updated: "2026-03-30T22:17:00.711Z"
+status: executing
+stopped_at: Completed 09-01-PLAN.md
+last_updated: "2026-03-30T23:02:38.981Z"
 last_activity: 2026-03-30
 progress:
   total_phases: 3
   completed_phases: 2
-  total_plans: 4
-  completed_plans: 4
+  total_plans: 7
+  completed_plans: 5
 ---
 
 # Project State
@@ -20,13 +20,13 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-30)
 
 **Core value:** Every file in the shared folder is downloaded, and the user can prove it — no silent failures, no missing files, no guesswork.
-**Current focus:** Phase 08 — new-contained-modules
+**Current focus:** Phase 09 — batch-and-session-resilience
 
 ## Current Position
 
-Phase: 9 of 9 (batch and session resilience)
-Plan: Not started
-Status: Phase 8 complete
+Phase: 09 (batch-and-session-resilience) — EXECUTING
+Plan: 2 of 3
+Status: Ready to execute
 Last activity: 2026-03-30
 
 Progress (v1.1): [████████░░] 50%
@@ -61,6 +61,7 @@ Progress (v1.1): [████████░░] 50%
 | Phase 07 P02 | 3min | 1 tasks | 3 files |
 | Phase 08 P01 | 12min | 2 tasks | 5 files |
 | Phase 08 P02 | 18min | 2 tasks | 4 files |
+| Phase 09-batch-and-session-resilience P01 | 8min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -79,6 +80,8 @@ Recent decisions affecting v1.1 work:
 - [Phase 08]: Extra files on disk not in manifest are IGNORED — verifier only checks promised files
 - [Phase 08]: Config save wrapped in try/except — download never fails due to config I/O error
 - [Phase 08]: Throttle not prompted in interactive mode — CLI-only flag for scripting use
+- [Phase 09-01]: threading.Lock (not RLock) for ReauthController: single-depth critical section, no recursive acquisition
+- [Phase 09-01]: on_reauth callback pattern keeps Playwright dependency out of engine.py — CLI owns browser lifecycle
 
 ### Pending Todos
 
@@ -91,6 +94,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-30T22:17:00.708Z
-Stopped at: Phase 9 context gathered
-Resume file: .planning/phases/09-batch-and-session-resilience/09-CONTEXT.md
+Last session: 2026-03-30T23:02:38.978Z
+Stopped at: Completed 09-01-PLAN.md
+Resume file: None
