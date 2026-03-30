@@ -3,9 +3,9 @@
 DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$DIR"
 
-# Quick import check — rebuild venv if broken
+# Deep import check — rebuild venv if any dependency is broken
 if [ -d "$DIR/.venv" ]; then
-    "$DIR/.venv/bin/python3" -c "import sharepoint_dl" 2>/dev/null || {
+    "$DIR/.venv/bin/python3" -c "from sharepoint_dl.cli.main import app" 2>/dev/null || {
         echo "Repairing environment..."
         rm -rf .venv
     }
