@@ -83,7 +83,7 @@ Deferred to future release. Tracked but not in current roadmap.
 
 ### UX
 
-- [ ] **UX-01**: Tool auto-detects the shared folder path from the sharing link URL (no manual `-r` flag needed)
+- [x] **UX-01**: Tool auto-detects the shared folder path from the sharing link URL (no manual `-r` flag needed)
 - [ ] **UX-02**: User can queue multiple folders for download in a single interactive session
 - [ ] **UX-03**: Tool saves default settings (SharePoint URL, destination, workers) to a config file and loads them on startup
 - [x] **UX-04**: Progress display shows estimated time remaining and current download speed
@@ -139,7 +139,7 @@ Deferred to future release. Tracked but not in current roadmap.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| UX-01 | Phase 7 | Pending |
+| UX-01 | Phase 7 | Complete |
 | UX-04 | Phase 7 | Complete |
 | REL-03 | Phase 7 | Complete |
 | UX-03 | Phase 8 | Pending |

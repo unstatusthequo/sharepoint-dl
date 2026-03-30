@@ -1,17 +1,16 @@
 ---
 gsd_state_version: 1.0
 milestone: v1.1
-milestone_name: feature-expansion
-status: active
-stopped_at: Completed 07-01-PLAN.md
-last_updated: "2026-03-30T20:50:31Z"
-last_activity: 2026-03-30 — Completed 07-01 (ETA column + download logging)
+milestone_name: Feature Expansion
+status: executing
+stopped_at: Completed 07-02-PLAN.md
+last_updated: "2026-03-30T20:56:20.489Z"
+last_activity: 2026-03-30
 progress:
   total_phases: 3
-  completed_phases: 0
-  total_plans: 6
-  completed_plans: 1
-  percent: 17
+  completed_phases: 1
+  total_plans: 2
+  completed_plans: 2
 ---
 
 # Project State
@@ -26,15 +25,16 @@ See: .planning/PROJECT.md (updated 2026-03-30)
 ## Current Position
 
 Phase: 7 of 9 (Zero-Risk UX Wins)
-Plan: 1 of 2 complete
-Status: Executing
-Last activity: 2026-03-30 — Completed 07-01 (ETA column + download logging)
+Plan: 2 of 2 complete
+Status: Ready to execute
+Last activity: 2026-03-30
 
 Progress (v1.1): [█████░░░░░] 17%
 
 ## Performance Metrics
 
 **Velocity (v1.0):**
+
 - Total plans completed: 12
 - Average duration: ~5min
 - Total execution time: ~60min
@@ -53,8 +53,11 @@ Progress (v1.1): [█████░░░░░] 17%
 | 07-zero-risk-ux-wins | 1/2 | ~4min | ~4min |
 
 **Recent Trend:**
+
 - Last 5 plans: 07-01 (4min)
 - Trend: Starting v1.1 execution
+
+| Phase 07 P02 | 3min | 1 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -68,6 +71,7 @@ Recent decisions affecting v1.1 work:
 - [v1.1 research]: Token bucket for throttle must be a single shared instance (not per-worker) — per-worker multiplies effective bandwidth by worker count
 - [v1.1 research]: Session refresh must run on main thread — Playwright GUI constraint; use check-lock-check pattern for concurrent 401 detection
 - [v1.1 research]: Each batch job needs its own subdirectory, state.json, manifest.json, and log file — shared state.json causes collision
+- [Phase 07]: Extracted resolve functions to sharepoint_dl/cli/resolve.py for reuse across CLI commands
 
 ### Pending Todos
 
@@ -80,6 +84,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-30
-Stopped at: Completed 07-01-PLAN.md
+Last session: 2026-03-30T20:56:20.487Z
+Stopped at: Completed 07-02-PLAN.md
 Resume file: None

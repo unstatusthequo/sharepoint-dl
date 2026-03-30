@@ -138,7 +138,7 @@ Plans:
 
 Plans:
 - [x] 07-01-PLAN.md — ETA/speed progress columns + timestamped log file module and wiring
-- [ ] 07-02-PLAN.md — Auto-detect root folder from sharing link (optional --root-folder)
+- [x] 07-02-PLAN.md — Auto-detect root folder from sharing link (optional --root-folder)
 
 ### Phase 8: New Contained Modules
 **Goal**: Users can save settings so repeat runs need less input, cap bandwidth to avoid saturating the network, and re-verify downloaded files against the manifest without re-downloading
