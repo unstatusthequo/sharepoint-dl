@@ -9,6 +9,7 @@ dependencies = [
     "rich",
     "typer",
     "tenacity",
+    "tomli-w",
 ]
 
 [project.scripts]
