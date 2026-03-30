@@ -180,6 +180,7 @@ def download_all(
     progress: Progress | None = None,
     flat: bool = False,
     throttle: "TokenBucket | None" = None,
+    on_auth_expired: "Callable[[], bool] | None" = None,
 ) -> tuple[list[str], list[tuple[str, str]]]:
     """Orchestrate concurrent file downloads with progress and auth halt.
 
@@ -196,13 +197,18 @@ def download_all(
         workers: Number of concurrent download workers (default 3).
         progress: Optional Rich Progress instance for visual feedback.
         throttle: Optional shared TokenBucket for bandwidth limiting.
+        on_auth_expired: Optional callback invoked on 401. If it returns True,
+            auth_halt is cleared and workers resume (file stays FAILED for
+            retry loop). If it returns False or is None, existing abort
+            behavior is preserved.
 
     Returns:
         Tuple of (completed_urls, failed_entries) where failed_entries
         is a list of (server_relative_url, error_reason) tuples.
 
     Raises:
-        AuthExpiredError: If any worker encounters 401/403.
+        AuthExpiredError: If any worker encounters 401/403 and on_auth_expired
+            is None or returns False.
     """
     state = JobState(dest_dir)
     state.initialize(files)
@@ -289,10 +295,17 @@ def download_all(
                         status=f"[cyan]{completed_count}/{total_pending} files[/cyan]",
                     )
         except AuthExpiredError as e:
-            auth_halt.set()
-            auth_error.append(e)
             state.set_status(url, FileStatus.FAILED, error="auth_expired")
             logger.error("Failed: %s -- auth expired", file_entry.name)
+            if on_auth_expired is not None:
+                auth_halt.set()  # Pause new submissions
+                refreshed = on_auth_expired()
+                if refreshed:
+                    auth_halt.clear()  # Resume workers
+                    return  # File stays FAILED — retry loop picks it up
+            # No callback or refresh failed — original abort behavior
+            auth_halt.set()
+            auth_error.append(e)
             raise
         except Exception as e:
             state.set_status(url, FileStatus.FAILED, error=str(e))

@@ -496,12 +496,14 @@ class TestReauthIntegration:
             download_all(session, entries, tmp_path, site_url, workers=1, on_auth_expired=None)
 
     def test_on_auth_expired_true_resumes(self, tmp_path: Path):
-        """When on_auth_expired returns True, auth_halt is cleared and download resumes.
+        """When on_auth_expired returns True, auth_halt is cleared and workers resume.
 
-        The 401 file stays FAILED; other files continue. No AuthExpiredError raised.
+        No AuthExpiredError is raised — the callback handles it. The auth-expired
+        file stays FAILED initially but the retry loop re-downloads it using the
+        refreshed session, so all files ultimately complete.
         """
         entries = _make_test_entries(3)
-        # First request returns 401, rest succeed
+        # First request returns 401, rest succeed (including retry of the 401 file)
         session = _mock_session_for_download(entries, auth_fail_index=0)
         site_url = "https://contoso.sharepoint.com/sites/shared"
 
@@ -519,9 +521,10 @@ class TestReauthIntegration:
 
         # Callback was invoked at least once
         assert len(callback_calls) >= 1
-        # The 401 file stays FAILED, other files succeed
-        assert len(failed) >= 1
-        assert any(reason == "auth_expired" for _url, reason in failed)
+        # No AuthExpiredError raised — reauth succeeded
+        # All files eventually complete (retry loop re-downloads the auth_expired one)
+        assert len(failed) == 0
+        assert len(completed) == 3
 
     def test_on_auth_expired_false_aborts(self, tmp_path: Path):
         """When on_auth_expired returns False, AuthExpiredError is raised (abort)."""
