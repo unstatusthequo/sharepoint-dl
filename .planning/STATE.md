@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Feature Expansion
 status: executing
-stopped_at: Completed 09-01-PLAN.md
-last_updated: "2026-03-30T23:02:38.981Z"
+stopped_at: Completed 09-02-PLAN.md
+last_updated: "2026-03-30T23:07:33.469Z"
 last_activity: 2026-03-30
 progress:
   total_phases: 3
   completed_phases: 2
   total_plans: 7
-  completed_plans: 5
+  completed_plans: 6
 ---
 
 # Project State
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-03-30)
 ## Current Position
 
 Phase: 09 (batch-and-session-resilience) — EXECUTING
-Plan: 2 of 3
+Plan: 3 of 3
 Status: Ready to execute
 Last activity: 2026-03-30
 
@@ -62,6 +62,7 @@ Progress (v1.1): [████████░░] 50%
 | Phase 08 P01 | 12min | 2 tasks | 5 files |
 | Phase 08 P02 | 18min | 2 tasks | 4 files |
 | Phase 09-batch-and-session-resilience P01 | 8min | 2 tasks | 2 files |
+| Phase 09 P02 | 2.5min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -82,6 +83,8 @@ Recent decisions affecting v1.1 work:
 - [Phase 08]: Throttle not prompted in interactive mode — CLI-only flag for scripting use
 - [Phase 09-01]: threading.Lock (not RLock) for ReauthController: single-depth critical section, no recursive acquisition
 - [Phase 09-01]: on_reauth callback pattern keeps Playwright dependency out of engine.py — CLI owns browser lifecycle
+- [Phase 09]: on_auth_expired defaults to None for backward compatibility — existing callers unaffected
+- [Phase 09]: Retry loop naturally re-downloads auth-expired files after successful reauth (no extra logic needed)
 
 ### Pending Todos
 
@@ -94,6 +97,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-30T23:02:38.978Z
-Stopped at: Completed 09-01-PLAN.md
+Last session: 2026-03-30T23:07:33.466Z
+Stopped at: Completed 09-02-PLAN.md
 Resume file: None
