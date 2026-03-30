@@ -115,7 +115,7 @@ Plans:
 
 </details>
 
-### 🚧 v1.1 Feature Expansion (In Progress)
+### v1.1 Feature Expansion (In Progress)
 
 **Milestone Goal:** Make SPDL easier to use (auto-detect folder, config file, batch mode), more reliable during long downloads (session refresh, throttle), verifiable after download (verify command), and observable throughout (ETA, log file).
 
@@ -134,8 +134,11 @@ Plans:
   2. After a completed run, a timestamped `download.log` file exists containing all events from that run in human-readable form
   3. User can pass a SharePoint sharing link directly to `download` and the tool resolves the root folder path automatically, without a `--root-folder` flag
   4. Log file output does not corrupt or interleave with the Rich TUI progress display
-**Plans**: TBD
-**UI hint**: yes
+**Plans**: 2 plans
+
+Plans:
+- [ ] 07-01-PLAN.md — ETA/speed progress columns + timestamped log file module and wiring
+- [ ] 07-02-PLAN.md — Auto-detect root folder from sharing link (optional --root-folder)
 
 ### Phase 8: New Contained Modules
 **Goal**: Users can save settings so repeat runs need less input, cap bandwidth to avoid saturating the network, and re-verify downloaded files against the manifest without re-downloading
@@ -172,6 +175,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 4. Resume Safety and Failure Reporting | v1.0 | 2/2 | Complete | 2026-03-27 |
 | 5. Manifest Path Accuracy | v1.0 | 1/1 | Complete | 2026-03-27 |
 | 6. Audit Evidence Normalization | v1.0 | 1/1 | Complete | 2026-03-27 |
-| 7. Zero-Risk UX Wins | v1.1 | 0/TBD | Not started | - |
+| 7. Zero-Risk UX Wins | v1.1 | 0/2 | Not started | - |
 | 8. New Contained Modules | v1.1 | 0/TBD | Not started | - |
 | 9. Batch and Session Resilience | v1.1 | 0/TBD | Not started | - |
