@@ -20,7 +20,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-30)
 
 **Core value:** Every file in the shared folder is downloaded, and the user can prove it — no silent failures, no missing files, no guesswork.
-**Current focus:** v1.1 Feature Expansion — Phase 7 ready to plan
+**Current focus:** Phase 08 — new-contained-modules
 
 ## Current Position
 
