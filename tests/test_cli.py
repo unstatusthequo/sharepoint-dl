@@ -887,3 +887,47 @@ class TestManifestIntegration:
         # Manifest should still be generated
         mock_gen_manifest.assert_called_once()
         assert "Manifest written to" in result.output
+
+
+class TestBatchMode:
+    """Tests for _job_dest helper and batch mode subdirectory isolation."""
+
+    def test_job_dest_naming(self, tmp_path):
+        """_job_dest creates correctly named subdirectory with timestamp prefix and sanitized leaf."""
+        from sharepoint_dl.cli.main import _job_dest
+
+        folder_path = "custodian1"
+        job_dir = _job_dest(tmp_path, folder_path)
+
+        # Name should end with the sanitized folder leaf
+        assert job_dir.name.endswith("_custodian1")
+        # Timestamp prefix: YYYY-MM-DD_HHMMSS
+        parts = job_dir.name.split("_")
+        # At minimum 3 parts: date, time, leaf
+        assert len(parts) >= 3
+        # First part looks like a date
+        assert len(parts[0]) == 10  # YYYY-MM-DD
+        assert parts[0].count("-") == 2
+
+    def test_job_dest_with_slashes(self, tmp_path):
+        """_job_dest with nested folder path uses only the leaf name."""
+        from sharepoint_dl.cli.main import _job_dest
+
+        folder_path = "/sites/shared/Documents/custodian1"
+        job_dir = _job_dest(tmp_path, folder_path)
+
+        # Should use only 'custodian1', not the full path
+        assert job_dir.name.endswith("_custodian1")
+        assert "sites" not in job_dir.name
+        assert "shared" not in job_dir.name
+        assert "Documents" not in job_dir.name
+
+    def test_job_dest_creates_directory(self, tmp_path):
+        """_job_dest creates the subdirectory on disk."""
+        from sharepoint_dl.cli.main import _job_dest
+
+        folder_path = "my_folder"
+        job_dir = _job_dest(tmp_path, folder_path)
+
+        assert job_dir.exists()
+        assert job_dir.is_dir()

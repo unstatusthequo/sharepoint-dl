@@ -164,84 +164,7 @@ def _interactive_mode_inner() -> None:
     else:
         _warn("Could not auto-resolve folder from sharing link.")
 
-    # Let user browse or paste a folder URL
-    current_path = root_path
-    while True:
-        if current_path is None:
-            folder_url = Prompt.ask(
-                "    [bold]Paste the browser URL of the target folder[/bold]"
-            ).strip()
-            current_path = resolve_folder_from_browser_url(folder_url)
-            if current_path is None:
-                _error("Could not extract folder path from that URL. Try again.")
-                continue
-
-        # Show current folder and subfolders
-        console.print(f"\n    [bright_cyan]Current:[/bright_cyan] {current_path}")
-
-        with console.status("    [dim]Loading subfolders...[/dim]", spinner="dots"):
-            try:
-                subfolders = _list_subfolders(session, site_url, current_path)
-            except Exception:
-                subfolders = []
-
-        if subfolders:
-            console.print()
-            for i, sf in enumerate(subfolders, 1):
-                console.print(
-                    f"    [bright_magenta]{i:>3}.[/bright_magenta] [bright_cyan]{sf['name']}[/bright_cyan]"
-                )
-            console.print(
-                f"    [bright_yellow]  0.[/bright_yellow] [bold bright_green]>> DOWNLOAD THIS FOLDER <<[/bold bright_green]"
-            )
-            console.print()
-
-            choice = Prompt.ask(
-                "    Navigate or select",
-                default="0",
-            ).strip()
-
-            if choice == "0" or choice == "":
-                break
-            try:
-                idx = int(choice)
-                if 1 <= idx <= len(subfolders):
-                    current_path = subfolders[idx - 1]["path"]
-                    continue
-                else:
-                    _error("Invalid number.")
-                    continue
-            except ValueError:
-                resolved = resolve_folder_from_browser_url(choice)
-                if resolved:
-                    current_path = resolved
-                    continue
-                _error("Invalid input. Enter a number or paste a folder URL.")
-                continue
-        else:
-            _info("No subfolders — this is a leaf folder.")
-            break
-
-    server_relative_path = current_path
-
-    # Step 4: Enumerate files
-    _section_header("03", "SCANNING FILES")
-
-    with console.status("    [bright_cyan]Enumerating...[/bright_cyan]", spinner="dots"):
-        try:
-            files = enumerate_files(session, site_url, server_relative_path)
-        except AuthExpiredError:
-            _error("Session expired. Please restart.")
-            raise typer.Exit(code=1)
-
-    if not files:
-        _warn("No files found in that folder.")
-        raise typer.Exit(code=0)
-
-    total_size = sum(f.size_bytes for f in files)
-    _success(f"Found {len(files)} files ({_format_size(total_size)} total)")
-
-    # Step 5: Download destination
+    # Step 4 (once): Download destination and workers
     _section_header("04", "CONFIGURATION")
 
     default_dest = cfg["download_dest"] or str(Path.home() / "Downloads" / "sharepoint-dl")
@@ -249,164 +172,309 @@ def _interactive_mode_inner() -> None:
         "    [bold]Download destination[/bold]",
         default=default_dest,
     ).strip()
-    dest = Path(dest_str)
+    batch_root = Path(dest_str)
 
-    # Step 6: Workers
     workers = IntPrompt.ask(
         "    [bold]Parallel workers[/bold] (1-8)",
         default=cfg["workers"],
     )
     workers = max(1, min(8, workers))
 
-    # Step 7: Confirm and download
-    console.print()
-    console.print(f"  [dim]{'─' * 44}[/dim]")
-    folder_display = server_relative_path.rsplit("/", 1)[-1] if "/" in server_relative_path else server_relative_path
-    console.print(f"  [bright_cyan]Folder:[/bright_cyan]  {folder_display}")
-    console.print(f"  [bright_cyan]Files:[/bright_cyan]   {len(files)} ({_format_size(total_size)})")
-    console.print(f"  [bright_cyan]Dest:[/bright_cyan]    {dest}")
-    console.print(f"  [bright_cyan]Workers:[/bright_cyan] {workers}")
-    console.print(f"  [bright_cyan]Layout:[/bright_cyan]  flat (all files in one folder)")
-    console.print(f"  [dim]{'─' * 44}[/dim]")
-    console.print()
+    # Batch loop — each iteration downloads one folder
+    batch_results: list[dict] = []
+    current_path = root_path
 
-    if not Confirm.ask("  [bold bright_yellow]>> Start download?[/bold bright_yellow]", default=True):
-        _warn("Aborted.")
-        raise typer.Exit(code=0)
+    while True:
+        # --- FOLDER SELECTION ---
+        _section_header("02", "SELECT TARGET FOLDER")
 
-    # Execute download
-    dest.mkdir(parents=True, exist_ok=True)
-    dl_logger = setup_download_logger(dest)
-    dl_logger.info("Session validated for %s", site_url)
-    dl_logger.info("Enumerated %d files (%s total)", len(files), _format_size(total_size))
-    dl_logger.info(
-        "Starting download: %d files, %d workers, dest=%s, flat=True",
-        len(files), workers, dest,
-    )
+        while True:
+            if current_path is None:
+                folder_url = Prompt.ask(
+                    "    [bold]Paste the browser URL of the target folder[/bold]"
+                ).strip()
+                current_path = resolve_folder_from_browser_url(folder_url)
+                if current_path is None:
+                    _error("Could not extract folder path from that URL. Try again.")
+                    continue
 
-    start_time = time.time()
-    auth_expired = False
-    completed: list[str] = []
-    failed: list[tuple[str, str]] = []
-    state: JobState | None = None
+            # Show current folder and subfolders
+            console.print(f"\n    [bright_cyan]Current:[/bright_cyan] {current_path}")
 
-    cancelled = False
-    try:
-        def _do_reauth(url: str) -> None:
-            console.print("  [bright_yellow]Session expired -- re-authenticating...[/bright_yellow]")
-            harvest_session(url)
+            with console.status("    [dim]Loading subfolders...[/dim]", spinner="dots"):
+                try:
+                    subfolders = _list_subfolders(session, site_url, current_path)
+                except Exception:
+                    subfolders = []
 
-        reauth = ReauthController(session, site_url, on_reauth=_do_reauth)
-        progress = _make_progress()
-        with progress:
-            completed, failed = download_all(
-                session, files, dest, site_url,
-                workers=workers, progress=progress, flat=True,
-                on_auth_expired=reauth.trigger,
-            )
-    except AuthExpiredError:
-        auth_expired = True
-        state = JobState(dest)
-        completed = state.complete_files()
-        failed = state.failed_files()
-        dl_logger.error(
-            "Session expired during download -- %d completed, %d failed",
-            len(completed), len(failed),
-        )
-    except KeyboardInterrupt:
-        cancelled = True
-        console.print("\n\n[yellow]Cancelled — saving progress...[/yellow]")
-        state = JobState(dest)
-        completed = state.complete_files()
-        failed = state.failed_files()
-        dl_logger.warning("Download cancelled by user -- %d completed", len(completed))
-    else:
-        state = JobState(dest)
-    finally:
-        elapsed = time.time() - start_time
+            if subfolders:
+                console.print()
+                for i, sf in enumerate(subfolders, 1):
+                    console.print(
+                        f"    [bright_magenta]{i:>3}.[/bright_magenta] [bright_cyan]{sf['name']}[/bright_cyan]"
+                    )
+                console.print(
+                    f"    [bright_yellow]  0.[/bright_yellow] [bold bright_green]>> DOWNLOAD THIS FOLDER <<[/bold bright_green]"
+                )
+                console.print()
 
-    # Manifest (even on cancel -- captures what completed so far)
-    manifest_path = None
-    if state is not None and completed:
-        manifest_path = generate_manifest(state, dest, sharing_url, server_relative_path, flat=True)
-        if manifest_path:
-            dl_logger.info("Manifest written: %s", manifest_path)
+                choice = Prompt.ask(
+                    "    Navigate or select",
+                    default="0",
+                ).strip()
 
-    # Log completeness and failures
-    dl_logger.info(
-        "Completeness: %d expected, %d downloaded, %d failed",
-        len(files), len(completed), len(failed),
-    )
-    if not auth_expired and not cancelled and not failed:
-        dl_logger.info(
-            "Download complete: %d files (%s) in %.1fs",
-            len(completed), _format_size(total_size), elapsed,
-        )
-    for file_url, reason in failed:
-        dl_logger.error("Failed: %s -- %s", file_url, reason)
-    shutdown_download_logger()
+                if choice == "0" or choice == "":
+                    break
+                try:
+                    idx = int(choice)
+                    if 1 <= idx <= len(subfolders):
+                        current_path = subfolders[idx - 1]["path"]
+                        continue
+                    else:
+                        _error("Invalid number.")
+                        continue
+                except ValueError:
+                    resolved = resolve_folder_from_browser_url(choice)
+                    if resolved:
+                        current_path = resolved
+                        continue
+                    _error("Invalid input. Enter a number or paste a folder URL.")
+                    continue
+            else:
+                _info("No subfolders — this is a leaf folder.")
+                break
 
-    # Report
-    remaining = len(files) - len(completed) - len(failed)
-    if cancelled:
-        status_text = f"[bright_yellow]CANCELLED[/bright_yellow] — {len(completed)} complete, {remaining} remaining"
-    elif auth_expired:
-        status_text = f"[bright_red]SESSION EXPIRED[/bright_red] — {len(completed)} complete, {remaining} remaining"
-    elif failed:
-        status_text = f"[bright_red]INCOMPLETE[/bright_red] — {len(failed)} failed"
-    else:
-        status_text = "[bold bright_green]COMPLETE[/bold bright_green]"
+        server_relative_path = current_path
+        folder_display = server_relative_path.rsplit("/", 1)[-1] if "/" in server_relative_path else server_relative_path
 
-    console.print()
-    console.print(f"  [dim]{'═' * 44}[/dim]")
-    console.print(f"  [bold bright_cyan]COMPLETENESS REPORT[/bold bright_cyan]")
-    console.print(f"  [dim]{'─' * 44}[/dim]")
-    console.print(f"  [bright_cyan]Expected:[/bright_cyan]   {len(files)}")
-    console.print(f"  [bright_green]Downloaded:[/bright_green] {len(completed)}")
-    if failed:
-        console.print(f"  [bright_red]Failed:[/bright_red]     {len(failed)}")
-    else:
-        console.print(f"  [dim]Failed:[/dim]     0")
-    console.print(f"  [bright_cyan]Status:[/bright_cyan]     {status_text}")
+        # --- FILE ENUMERATION ---
+        _section_header("03", "SCANNING FILES")
 
-    if manifest_path:
-        console.print(f"  [bright_magenta]Manifest:[/bright_magenta]   {manifest_path}")
-    console.print(f"  [dim]{'═' * 44}[/dim]")
+        with console.status("    [bright_cyan]Enumerating...[/bright_cyan]", spinner="dots"):
+            try:
+                files = enumerate_files(session, site_url, server_relative_path)
+            except AuthExpiredError:
+                _error("Session expired. Please restart.")
+                raise typer.Exit(code=1)
 
-    if failed:
+        if not files:
+            _warn("No files found in that folder.")
+            raise typer.Exit(code=0)
+
+        total_size = sum(f.size_bytes for f in files)
+        _success(f"Found {len(files)} files ({_format_size(total_size)} total)")
+
+        # Confirm
         console.print()
-        error_table = Table(
-            title="[bright_red]Failed Downloads[/bright_red]",
-            border_style="bright_red",
-            title_style="bold bright_red",
+        console.print(f"  [dim]{'─' * 44}[/dim]")
+        console.print(f"  [bright_cyan]Folder:[/bright_cyan]  {folder_display}")
+        console.print(f"  [bright_cyan]Files:[/bright_cyan]   {len(files)} ({_format_size(total_size)})")
+        console.print(f"  [bright_cyan]Dest:[/bright_cyan]    {batch_root}")
+        console.print(f"  [bright_cyan]Workers:[/bright_cyan] {workers}")
+        console.print(f"  [bright_cyan]Layout:[/bright_cyan]  flat (all files in one folder)")
+        console.print(f"  [dim]{'─' * 44}[/dim]")
+        console.print()
+
+        if not Confirm.ask("  [bold bright_yellow]>> Start download?[/bold bright_yellow]", default=True):
+            _warn("Aborted.")
+            batch_results.append({
+                "folder": folder_display,
+                "files": 0,
+                "failed": 0,
+                "elapsed": 0.0,
+                "status": "CANCELLED",
+            })
+            break
+
+        # --- PER-JOB SUBDIRECTORY ---
+        job_dest = _job_dest(batch_root, server_relative_path)
+
+        # --- EXECUTE DOWNLOAD ---
+        dl_logger = setup_download_logger(job_dest)
+        dl_logger.info("Session validated for %s", site_url)
+        dl_logger.info("Enumerated %d files (%s total)", len(files), _format_size(total_size))
+        dl_logger.info(
+            "Starting download: %d files, %d workers, dest=%s, flat=True",
+            len(files), workers, job_dest,
         )
-        error_table.add_column("File", style="bright_yellow")
-        error_table.add_column("Error", style="bright_red")
+
+        start_time = time.time()
+        auth_expired = False
+        completed: list[str] = []
+        failed: list[tuple[str, str]] = []
+        state: JobState | None = None
+
+        cancelled = False
+        try:
+            def _do_reauth(url: str) -> None:
+                console.print("  [bright_yellow]Session expired -- re-authenticating...[/bright_yellow]")
+                harvest_session(url)
+
+            reauth = ReauthController(session, site_url, on_reauth=_do_reauth)
+            progress = _make_progress()
+            with progress:
+                completed, failed = download_all(
+                    session, files, job_dest, site_url,
+                    workers=workers, progress=progress, flat=True,
+                    on_auth_expired=reauth.trigger,
+                )
+        except AuthExpiredError:
+            auth_expired = True
+            state = JobState(job_dest)
+            completed = state.complete_files()
+            failed = state.failed_files()
+            dl_logger.error(
+                "Session expired during download -- %d completed, %d failed",
+                len(completed), len(failed),
+            )
+        except KeyboardInterrupt:
+            cancelled = True
+            console.print("\n\n[yellow]Cancelled — saving progress...[/yellow]")
+            state = JobState(job_dest)
+            completed = state.complete_files()
+            failed = state.failed_files()
+            dl_logger.warning("Download cancelled by user -- %d completed", len(completed))
+        else:
+            state = JobState(job_dest)
+        finally:
+            elapsed = time.time() - start_time
+
+        # Manifest (even on cancel -- captures what completed so far)
+        manifest_path = None
+        if state is not None and completed:
+            manifest_path = generate_manifest(state, job_dest, sharing_url, server_relative_path, flat=True)
+            if manifest_path:
+                dl_logger.info("Manifest written: %s", manifest_path)
+
+        # Log completeness and failures
+        dl_logger.info(
+            "Completeness: %d expected, %d downloaded, %d failed",
+            len(files), len(completed), len(failed),
+        )
+        if not auth_expired and not cancelled and not failed:
+            dl_logger.info(
+                "Download complete: %d files (%s) in %.1fs",
+                len(completed), _format_size(total_size), elapsed,
+            )
         for file_url, reason in failed:
-            fname = file_url.rsplit("/", 1)[-1] if "/" in file_url else file_url
-            error_table.add_row(fname, reason)
-        console.print(error_table)
+            dl_logger.error("Failed: %s -- %s", file_url, reason)
+        shutdown_download_logger()
 
-    if cancelled:
-        console.print(
-            "\n  [bright_yellow]Re-run to resume — completed files will be skipped.[/bright_yellow]"
-        )
-        raise typer.Exit(code=0)
+        # Determine job status
+        if cancelled:
+            job_status = "CANCELLED"
+        elif auth_expired:
+            job_status = "AUTH_EXPIRED"
+        elif failed:
+            job_status = "FAILED"
+        else:
+            job_status = "OK"
 
-    if auth_expired:
-        console.print(
-            "\n  [bright_red]Session expired. Re-run to resume — completed files skipped.[/bright_red]"
+        batch_results.append({
+            "folder": folder_display,
+            "files": len(completed),
+            "failed": len(failed),
+            "elapsed": elapsed,
+            "status": job_status,
+        })
+
+        # Report for this job
+        remaining = len(files) - len(completed) - len(failed)
+        if cancelled:
+            status_text = f"[bright_yellow]CANCELLED[/bright_yellow] — {len(completed)} complete, {remaining} remaining"
+        elif auth_expired:
+            status_text = f"[bright_red]SESSION EXPIRED[/bright_red] — {len(completed)} complete, {remaining} remaining"
+        elif failed:
+            status_text = f"[bright_red]INCOMPLETE[/bright_red] — {len(failed)} failed"
+        else:
+            status_text = "[bold bright_green]COMPLETE[/bold bright_green]"
+
+        console.print()
+        console.print(f"  [dim]{'═' * 44}[/dim]")
+        console.print(f"  [bold bright_cyan]COMPLETENESS REPORT[/bold bright_cyan]")
+        console.print(f"  [dim]{'─' * 44}[/dim]")
+        console.print(f"  [bright_cyan]Expected:[/bright_cyan]   {len(files)}")
+        console.print(f"  [bright_green]Downloaded:[/bright_green] {len(completed)}")
+        if failed:
+            console.print(f"  [bright_red]Failed:[/bright_red]     {len(failed)}")
+        else:
+            console.print(f"  [dim]Failed:[/dim]     0")
+        console.print(f"  [bright_cyan]Status:[/bright_cyan]     {status_text}")
+
+        if manifest_path:
+            console.print(f"  [bright_magenta]Manifest:[/bright_magenta]   {manifest_path}")
+        console.print(f"  [dim]{'═' * 44}[/dim]")
+
+        if failed:
+            console.print()
+            error_table = Table(
+                title="[bright_red]Failed Downloads[/bright_red]",
+                border_style="bright_red",
+                title_style="bold bright_red",
+            )
+            error_table.add_column("File", style="bright_yellow")
+            error_table.add_column("Error", style="bright_red")
+            for file_url, reason in failed:
+                fname = file_url.rsplit("/", 1)[-1] if "/" in file_url else file_url
+                error_table.add_row(fname, reason)
+            console.print(error_table)
+
+        if cancelled:
+            console.print(
+                "\n  [bright_yellow]Re-run to resume — completed files will be skipped.[/bright_yellow]"
+            )
+            break
+
+        if auth_expired:
+            console.print(
+                "\n  [bright_red]Session expired. Re-run to resume — completed files skipped.[/bright_red]"
+            )
+            raise typer.Exit(code=1)
+
+        # Offer to queue another folder
+        console.print()
+        if not Confirm.ask("  [bold]Queue another folder?[/bold]", default=False):
+            break
+
+        # Reset navigation to shared root for next job
+        current_path = root_path
+
+    # --- BATCH SUMMARY (shown when 2+ jobs completed) ---
+    if len(batch_results) > 1:
+        console.print()
+        summary_table = Table(
+            title="[bold bright_cyan]BATCH SUMMARY[/bold bright_cyan]",
+            border_style="bright_cyan",
         )
+        summary_table.add_column("Folder", style="bright_cyan")
+        summary_table.add_column("Files", justify="right", style="bright_green")
+        summary_table.add_column("Status", justify="center")
+        summary_table.add_column("Time", justify="right", style="dim")
+        for r in batch_results:
+            status_style = "[bright_green]OK[/bright_green]" if r["status"] == "OK" else f"[bright_red]{r['status']}[/bright_red]"
+            summary_table.add_row(
+                r["folder"],
+                str(r["files"]),
+                status_style,
+                f"{r['elapsed']:.0f}s",
+            )
+        console.print(summary_table)
+
+    # Determine overall exit status
+    any_auth_expired = any(r["status"] == "AUTH_EXPIRED" for r in batch_results)
+    any_failed = any(r["status"] == "FAILED" for r in batch_results)
+
+    if any_auth_expired:
         raise typer.Exit(code=1)
 
-    if failed:
+    if any_failed:
         raise typer.Exit(code=1)
 
-    # Save config after successful download (no failures, not cancelled, not auth_expired)
+    # Save config after successful batch
     try:
         save_config({
             "sharepoint_url": sharing_url,
-            "download_dest": str(dest),
+            "download_dest": str(batch_root),
             "workers": workers,
             "flat": True,
         })
@@ -462,6 +530,22 @@ def _interactive_mode_inner() -> None:
                     _error(f"Verification issues: {', '.join(parts)}")
         except Exception as exc:
             _warn(f"Verification error: {exc}")
+
+
+def _job_dest(batch_root: Path, folder_path: str) -> Path:
+    """Create a timestamped subdirectory for a batch job.
+
+    Naming: {YYYY-MM-DD_HHMMSS}_{folder_leaf_name}
+    Per D-09: each batch job gets its own subdirectory.
+    """
+    from datetime import datetime
+    folder_leaf = folder_path.rsplit("/", 1)[-1] if "/" in folder_path else folder_path
+    # Sanitize leaf name: replace spaces and special chars
+    safe_leaf = "".join(c if c.isalnum() or c in "-_" else "_" for c in folder_leaf)
+    ts = datetime.now().strftime("%Y-%m-%d_%H%M%S")
+    job_dir = batch_root / f"{ts}_{safe_leaf}"
+    job_dir.mkdir(parents=True, exist_ok=True)
+    return job_dir
 
 
 def _format_size(size_bytes: int) -> str:
