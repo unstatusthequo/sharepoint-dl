@@ -1,62 +1,103 @@
-# SharePoint Bulk Downloader
+# SharePoint Bulk Downloader (SPDL)
 
 ## What This Is
 
-A reliable bulk download tool for SharePoint shared folders, designed for forensic evidence collection. It authenticates via the browser's existing guest session (email + one-time code), downloads all files from a target folder, and produces a verification manifest with file sizes and hashes to prove completeness. Built for Mac, with cross-platform support planned for later.
+A reliable bulk download tool for SharePoint shared folders, designed for forensic evidence collection. Authenticates via browser session (email + OTP code), provides an interactive TUI for folder browsing and download, and produces a verification manifest with SHA-256 hashes to prove completeness. Cross-platform (macOS, Windows, Linux).
 
 ## Core Value
 
 Every file in the shared folder is downloaded, and the user can prove it — no silent failures, no missing files, no guesswork.
 
+## Current Milestone: v1.1 Feature Expansion
+
+**Goal:** Make SPDL easier to use, more reliable during long downloads, verifiable after download, and distributable via PyPI.
+
+**Target features:**
+- Auto-detect root folder from sharing link (eliminate manual `-r` flag)
+- Multi-folder batch download (queue multiple custodians in one session)
+- Post-download integrity verification (`verify` command)
+- Publish to PyPI as `spdl`
+- Smart session refresh mid-download (auto re-auth on 401)
+- Bandwidth throttling
+- Download speed estimation & ETA
+- Config file for saved settings
+- Timestamped log file for audit trail
+
 ## Requirements
 
-### Validated
+### Validated (v1.0)
 
-(None yet — ship to validate)
+- [x] Browser session capture via Playwright (AUTH-01)
+- [x] Session validation before downloads (AUTH-02)
+- [x] Session expiry detection mid-run (AUTH-03)
+- [x] Recursive folder traversal with pagination (ENUM-01, ENUM-02)
+- [x] Pre-download file count display (ENUM-03)
+- [x] Streaming 8MB chunk downloads for 2GB+ files (DWNL-01)
+- [x] Resume interrupted runs (DWNL-02)
+- [x] Explicit failure tracking (DWNL-03)
+- [x] Non-zero exit on failure (DWNL-04)
+- [x] Concurrent downloads 1-8 workers (DWNL-05)
+- [x] SHA-256 hashes during download (VRFY-01)
+- [x] JSON manifest with per-file metadata (VRFY-02)
+- [x] Completeness report (VRFY-03)
+- [x] Download destination selection (CLI-01)
+- [x] Progress bars (CLI-02)
+- [x] Error summary (CLI-03)
+- [x] Interactive TUI with folder browser
+- [x] Cross-platform support (macOS, Windows)
 
-### Active
+### Active (v1.1)
 
-- [ ] Bulk download all files from a SharePoint shared folder
-- [ ] Authenticate using existing browser session (guest email + OTP auth)
-- [ ] Recursive traversal of folder structure (custodian → subfolder → files)
-- [ ] Preserve folder structure in local download destination
-- [ ] User chooses download destination at launch
-- [ ] Generate verification manifest (filename, size, hash for every file)
-- [ ] Report on completeness: files expected vs files downloaded
-- [ ] Resume/retry failed downloads without re-downloading completed files
-- [ ] Handle large files (up to ~2GB per file)
-- [ ] Clear error reporting — never silently skip a file
+See REQUIREMENTS.md for full v1.1 requirements.
 
 ### Out of Scope
 
-- Windows/Linux support — Mac-only for v1, cross-platform later
-- Microsoft Graph API auth — guest OTP access doesn't support this cleanly
+- Microsoft Graph API auth — guest OTP access doesn't support app registration
 - Upload capability — download only
-- File preview or browsing UI — just download what's there
 - Incremental sync — full download, not ongoing sync
+- Real-time notifications — batch download tool
 
 ## Context
 
-- **Use case:** Forensic evidence collection from third-party SharePoint. Files are EnCase evidence files (.E01, .L01 etc.) and logical evidence files, typically up to ~2GB each.
-- **Structure:** `Images/[custodian name]/[subfolder(s)]/[100+ files]`. Currently 3 custodians to download. Files are concentrated in leaf folders, not spread across the tree.
-- **Auth model:** SharePoint external sharing — user receives a link, enters email, gets a one-time code. This creates a browser session but doesn't provide API tokens in a standard OAuth flow.
-- **Prior attempt:** A Python script existed that downloaded files but silently skipped some. Root cause unknown — could be pagination, auth expiry, timeout on large files, or API issues.
-- **Urgency:** Active project deadline. Needs to work reliably on first real use.
+- **Use case:** Forensic evidence collection from third-party SharePoint. Also general-purpose bulk download from shared links.
+- **Auth model:** SharePoint external sharing — email + OTP code via Playwright browser session.
+- **Platform:** macOS, Windows. Linux untested but should work.
+- **Distribution:** Public GitHub repo. PyPI planned for v1.1.
+- **Tech stack:** Python 3.11-3.13, Playwright, requests, typer, rich, tenacity. Managed via uv.
 
 ## Constraints
 
-- **Auth**: Must work with SharePoint guest/external sharing (email + OTP code) — no admin access or app registrations available on the target tenant
-- **Reliability**: Forensic context means completeness must be provable. A manifest with hashes is non-negotiable.
-- **File size**: Must handle files up to ~2GB without corruption or timeout
-- **Platform**: Mac (macOS) for v1
+- **Auth**: Must work with SharePoint guest/external sharing — no admin access or app registrations
+- **Reliability**: Forensic context requires provable completeness (manifest + hashes)
+- **File size**: Must handle files up to ~2GB without corruption
+- **UX**: Interactive TUI is primary; CLI flags for scripting/automation
 
 ## Key Decisions
 
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
-| Browser session-based auth over API auth | Guest OTP access doesn't support standard OAuth app registration; leveraging browser session is the practical path | — Pending |
-| Manifest with hashes for verification | Forensic evidence requires provable completeness — file count alone isn't sufficient | — Pending |
-| Mac-only v1 | Urgent need is on Mac; cross-platform deferred to avoid scope creep | — Pending |
+| Browser session-based auth | Guest OTP doesn't support OAuth app registration | Validated v1.0 |
+| SHA-256 manifest | Forensic evidence requires provable completeness | Validated v1.0 |
+| Interactive TUI as primary UX | Long URLs and paths are error-prone to type manually | Validated v1.0 |
+| python -m invocation via run.sh | uv entrypoint scripts unreliable; __main__.py always works | Validated v1.0 |
+| Flat download as TUI default | Users don't want deep folder nesting for evidence files | Validated v1.0 |
+
+## Evolution
+
+This document evolves at phase transitions and milestone boundaries.
+
+**After each phase transition** (via `/gsd:transition`):
+1. Requirements invalidated? → Move to Out of Scope with reason
+2. Requirements validated? → Move to Validated with phase reference
+3. New requirements emerged? → Add to Active
+4. Decisions to log? → Add to Key Decisions
+5. "What This Is" still accurate? → Update if drifted
+
+**After each milestone** (via `/gsd:complete-milestone`):
+1. Full review of all sections
+2. Core Value check — still the right priority?
+3. Audit Out of Scope — reasons still valid?
+4. Update Context with current state
 
 ---
-*Last updated: 2026-03-27 after initialization*
+*Last updated: 2026-03-30 — Milestone v1.1 started*
