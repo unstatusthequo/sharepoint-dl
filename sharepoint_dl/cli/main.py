@@ -5,7 +5,7 @@ from __future__ import annotations
 import time
 from collections import defaultdict
 from pathlib import Path
-from urllib.parse import unquote, urlparse, parse_qs
+from urllib.parse import urlparse
 
 import requests as _requests
 import typer
@@ -14,6 +14,7 @@ from rich.prompt import Prompt, IntPrompt, Confirm
 from rich.table import Table
 
 from sharepoint_dl.auth.browser import harvest_session
+from sharepoint_dl.cli.resolve import resolve_folder_from_browser_url, resolve_sharing_link
 from sharepoint_dl.auth.session import load_session, validate_session
 from sharepoint_dl.downloader.engine import _make_progress, download_all
 from sharepoint_dl.downloader.log import setup_download_logger, shutdown_download_logger
@@ -29,48 +30,6 @@ app = typer.Typer(
 
 console = Console()
 
-
-def _resolve_folder_from_browser_url(url: str) -> str | None:
-    """Extract the server-relative folder path from a SharePoint browser URL.
-
-    SharePoint folder URLs contain an `id=` query parameter with the
-    URL-encoded server-relative path.
-
-    Args:
-        url: A SharePoint browser URL (from the address bar).
-
-    Returns:
-        Server-relative path, or None if it can't be extracted.
-    """
-    parsed = urlparse(url)
-    params = parse_qs(parsed.query)
-    if "id" in params:
-        return unquote(params["id"][0])
-    # Try fragment
-    if parsed.fragment:
-        frag_params = parse_qs(parsed.fragment)
-        if "id" in frag_params:
-            return unquote(frag_params["id"][0])
-    return None
-
-
-def _resolve_sharing_link(session: _requests.Session, sharing_url: str) -> str | None:
-    """Follow a SharePoint sharing link redirect to find the folder path.
-
-    Args:
-        session: Authenticated requests.Session.
-        sharing_url: The sharing link URL.
-
-    Returns:
-        Server-relative folder path, or None if it can't be resolved.
-    """
-    try:
-        resp = session.get(sharing_url, allow_redirects=True, timeout=30)
-        if resp.status_code == 200:
-            return _resolve_folder_from_browser_url(str(resp.url))
-    except Exception:
-        pass
-    return None
 
 
 def _list_subfolders(
@@ -191,7 +150,7 @@ def _interactive_mode_inner() -> None:
     _section_header("02", "SELECT TARGET FOLDER")
 
     with console.status("    [dim]Resolving sharing link...[/dim]", spinner="dots"):
-        root_path = _resolve_sharing_link(session, sharing_url)
+        root_path = resolve_sharing_link(session, sharing_url)
 
     if root_path:
         _info(f"Shared root: {root_path}")
@@ -205,7 +164,7 @@ def _interactive_mode_inner() -> None:
             folder_url = Prompt.ask(
                 "    [bold]Paste the browser URL of the target folder[/bold]"
             ).strip()
-            current_path = _resolve_folder_from_browser_url(folder_url)
+            current_path = resolve_folder_from_browser_url(folder_url)
             if current_path is None:
                 _error("Could not extract folder path from that URL. Try again.")
                 continue
@@ -246,7 +205,7 @@ def _interactive_mode_inner() -> None:
                     _error("Invalid number.")
                     continue
             except ValueError:
-                resolved = _resolve_folder_from_browser_url(choice)
+                resolved = resolve_folder_from_browser_url(choice)
                 if resolved:
                     current_path = resolved
                     continue
@@ -511,12 +470,11 @@ def auth(
 @app.command(name="list")
 def list_files(
     url: str = typer.Argument(..., help="SharePoint folder URL"),
-    root_folder: str = typer.Option(
-        ...,
+    root_folder: str | None = typer.Option(
+        None,
         "--root-folder", "-r",
-        help="Server-relative path to the folder to enumerate "
-        "(e.g. '/sites/CyberSecurityTeam/Shared Documents/Images'). "
-        "REQUIRED — prevents accidentally scanning the entire site.",
+        help="Server-relative path to the folder to enumerate. "
+        "If omitted, auto-detected from the sharing link URL.",
     ),
 ) -> None:
     """List all files in a SharePoint folder with summary table."""
@@ -528,13 +486,25 @@ def list_files(
         raise typer.Exit(code=1)
 
     site_url, _auto_path = _parse_sharepoint_url(url)
-    server_relative_path = root_folder
 
     if not validate_session(session, site_url):
         console.print(
             "[red]Session expired. Run 'sharepoint-dl auth <url>' to re-authenticate.[/red]"
         )
         raise typer.Exit(code=1)
+
+    if root_folder is None:
+        with console.status("[bold green]Resolving folder from sharing link...", spinner="dots"):
+            root_folder = resolve_sharing_link(session, url)
+        if root_folder is None:
+            console.print(
+                "[red]Could not auto-detect folder from URL. "
+                "Please specify --root-folder (-r) manually.[/red]"
+            )
+            raise typer.Exit(code=1)
+        console.print(f"[green]Auto-detected folder:[/green] {root_folder}")
+
+    server_relative_path = root_folder
 
     try:
         with console.status("[bold green]Scanning folders...", spinner="dots"):
@@ -575,11 +545,12 @@ def list_files(
 def download(
     url: str = typer.Argument(..., help="SharePoint folder URL"),
     dest: Path = typer.Argument(..., help="Local download destination"),
-    root_folder: str = typer.Option(
-        ...,
+    root_folder: str | None = typer.Option(
+        None,
         "--root-folder",
         "-r",
-        help="Server-relative path to the folder to download",
+        help="Server-relative path to the folder to download. "
+        "If omitted, auto-detected from the sharing link URL.",
     ),
     workers: int = typer.Option(
         3,
@@ -617,7 +588,6 @@ def download(
 
     # 2. Parse URL
     site_url, _auto_path = _parse_sharepoint_url(url)
-    server_relative_path = root_folder
 
     # 3. Validate session
     if not validate_session(session, site_url):
@@ -625,6 +595,20 @@ def download(
             "[red]Session expired. Run 'sharepoint-dl auth <url>' to re-authenticate.[/red]"
         )
         raise typer.Exit(code=1)
+
+    # 3b. Auto-detect root folder if not provided
+    if root_folder is None:
+        with console.status("[bold green]Resolving folder from sharing link...", spinner="dots"):
+            root_folder = resolve_sharing_link(session, url)
+        if root_folder is None:
+            console.print(
+                "[red]Could not auto-detect folder from URL. "
+                "Please specify --root-folder (-r) manually.[/red]"
+            )
+            raise typer.Exit(code=1)
+        console.print(f"[green]Auto-detected folder:[/green] {root_folder}")
+
+    server_relative_path = root_folder
 
     # 4. Enumerate files
     try:
