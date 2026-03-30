@@ -1,182 +1,170 @@
 # Project Research Summary
 
-**Project:** sharepoint_dl — SharePoint Bulk File Downloader
-**Domain:** Forensic evidence collection via SharePoint external/guest access
-**Researched:** 2026-03-27
-**Confidence:** MEDIUM — core patterns HIGH confidence; auth layer is actively changing
+**Project:** SharePoint Bulk Downloader (SPDL) — v1.1 Milestone
+**Domain:** CLI forensic evidence collection tool for SharePoint shared folders (guest/external auth)
+**Researched:** 2026-03-30 (v1.1 update; original v1.0 research 2026-03-27)
+**Confidence:** HIGH (architecture and features based on direct codebase inspection; auth layer MEDIUM due to active Microsoft OTP→Entra B2B migration)
 
 ## Executive Summary
 
-This is a forensic-grade CLI tool for bulk-downloading files from a SharePoint Online site accessible only through a guest/external sharing link — no admin credentials, no Azure app registration, no organizational account on the target tenant. The defining constraint is that the only viable authentication path is harvesting browser session cookies (FedAuth, rtFa) after the user manually completes the external auth flow in a real browser. Playwright is the correct mechanism for this: its `storageState()` API captures the full Microsoft identity session state in one call, regardless of whether the underlying flow is the legacy OTP model or the current Entra B2B guest model. Once cookies are harvested, all folder enumeration and file downloads use the SharePoint REST API (`_api/`) directly via `requests.Session` — the Microsoft Graph API and all third-party SharePoint client libraries are unviable for this scenario.
+SPDL is a forensic-grade CLI tool for bulk downloading SharePoint shared folders using guest/external authentication. The v1.0 foundation — two-phase Playwright session harvest plus requests streaming plus SHA-256 manifest — is validated and shipped. v1.1 adds nine features that bring the tool to parity with generic download tools (wget, aria2c, yt-dlp) on ETA display, timestamped logging, config file, and bandwidth throttling, while extending its forensic lead with a local verify command and first-class multi-folder batch mode. One new runtime dependency (`tomli-w`) covers all config file needs. Everything else is stdlib or already installed.
 
-The recommended stack is Python 3.11+, Playwright 1.58, `requests` 2.33, `rich` for progress display, `typer` for CLI, and `tenacity` for retry logic. The architecture separates concerns into Auth, Enumerator, Download Engine, Job State, and Manifest Writer modules — in that exact build order — because each layer depends on the previous one being proven correct. The two most critical architectural decisions are: enumerate fully before downloading (so a "files expected vs. files downloaded" count is always available), and stream every file download in chunks with incremental SHA-256 hashing (so 2GB evidence files never buffer in memory and hashing requires no second I/O pass).
+The recommended build order for v1.1 follows a clear dependency and risk gradient. Four zero-risk wins (ETA display, log file, auto-detect folder from sharing link, PyPI publish) require no new modules and carry no regression risk to the existing download path — these ship first. A second tier of contained new modules (config file, throttle, verify command) adds functionality without touching the core engine. The highest-complexity features (multi-folder batch, smart session refresh) come last because they interact with the existing TUI loop and the auth-halt concurrency model respectively. Session refresh is the highest-leverage reliability feature for multi-hour 200+ GB downloads, and the hardest to test; it must be built last with adequate test coverage of thread coordination.
 
-The primary risks are: (1) the OTP authentication model assumed by the project brief is being retired — all new sharing links now use Entra B2B guest accounts, and OTP links stop working entirely in July 2026; (2) the prior Python script's silent file skips are almost certainly caused by missing API pagination handling (SharePoint truncates folder listings at ~100 items without error) combined with bare `except: continue` in the download loop. Both failures must be treated as unacceptable — they are chain-of-custody failures in a forensic context. The auth layer should be built as a swappable module from day one to survive the OTP retirement without a rewrite.
+The critical risk for the entire v1.1 milestone is the PyPI package name `spdl` — it is already registered by Meta's data loading library (`pip install spdl` installs the wrong package). This must be resolved before any packaging work begins; `sharepoint-dl` is the natural fallback given the existing GitHub slug. The second major risk is the Microsoft OTP retirement (effective July 2026): the Playwright session-harvest architecture is already flow-agnostic and handles Entra B2B guest auth with no code changes, but this must be empirically verified during the session refresh phase against a post-migration tenant.
 
 ## Key Findings
 
 ### Recommended Stack
 
-The auth-then-download pattern drives the entire stack choice. Playwright provides the only reliable session capture mechanism for external Microsoft identity flows; raw `requests` is the correct HTTP client once cookies are in hand (synchronous, stream-capable, no OAuth overhead). `rich` is strongly preferred over `tqdm` because this tool needs multiple concurrent progress lines: auth status, folder scan, per-file download, and overall progress. `tenacity` is required — hand-rolled retry loops are a pitfall source, and SharePoint throttles aggressively enough that unhandled 429s will cause silent failures.
+The v1.0 stack (Python 3.11+, playwright 1.58, requests 2.33, rich 14.1, typer 0.15, tenacity 9.x) is validated and unchanged. v1.1 adds exactly one new runtime dependency: `tomli-w` (>=1.2.0) to write TOML config files — stdlib `tomllib` handles reads, and `tomli-w` (by the same author, hukkin) handles writes. All other v1.1 features use Rich columns, stdlib logging, and stdlib threading that are already installed or built-in. A dev-only `twine` addition supports PyPI publishing via `uv run twine upload dist/*`.
 
 **Core technologies:**
-- **Python 3.11+**: stdlib `hashlib` for SHA-256, `tomllib`, improved async — avoid 3.9 (requests 2.33 dropped it)
-- **Playwright 1.58**: `storageState()` captures full Microsoft identity session in one call — the only reliable approach for Entra B2B/OTP sessions; Selenium is inadequate
-- **requests 2.33**: `stream=True` + `iter_content()` for 2GB file downloads; shares cookies from Playwright state; synchronous is correct here
-- **rich 14.1**: multi-task progress bars, per-file transfer speed, ETA — required for multiple concurrent status lines
-- **typer 0.15**: type-hint-driven CLI, sufficient for ~5 arguments; no need for Click's lower-level API
-- **tenacity 9.x**: declarative retry with backoff and jitter — mandatory for SharePoint throttling; never hand-roll
-- **uv**: fast dependency management; `uv run` avoids manual venv activation
+- `playwright` 1.58: browser automation for session harvest — the only reliable way to capture full Microsoft identity session state (cookies + localStorage) in one call via `storageState()`; works identically for OTP and Entra B2B guest flows
+- `requests` 2.33: sync HTTP streaming downloads — `stream=True` + `iter_content()` keeps 2 GB files off-heap; synchronous is correct for sequential large-file downloads
+- `rich` 14.1: terminal progress display — `TransferSpeedColumn`, `DownloadColumn`, `TimeRemainingColumn` available natively; no new dep needed for ETA or speed display
+- `tenacity` 9.x: retry with exponential backoff — handles 429/5xx; auth expiry (401/403) is a hard halt, not a retry target
+- `tomli-w` 1.2.0: config file writes — the only new v1.1 runtime dep; 15 KB, MIT, Python 3.9+
 
-**Explicit exclusions:** Microsoft Graph API (requires app registration, incompatible with guest access), `office365-rest-python-client` (404s on external files, OAuth-only), `sharepy` (SAML/form-digest flow incompatible with Entra B2B sessions).
+**Explicit exclusions for v1.1:** `pydantic-settings` (overkill for ~6 flat config keys), `requests-ratelimiter` (limits by request count, not bytes/sec), `tomlkit` (style-preserving, unnecessary since config is always written fresh), `structlog` (overkill for a human-readable audit trail), `platformdirs` (defer unless config path logic grows complex).
 
 ### Expected Features
 
-The MVP for forensic collection is non-negotiable on 10 features. The items deferred to v1.x and v2+ are well-defined and should not creep into the initial build.
+**Must have — v1.1 table stakes (users expect parity with wget/aria2c/yt-dlp):**
+- ETA and download speed display — conspicuous absence for multi-hour runs; effectively free via existing Rich columns
+- Timestamped log file — forensic identity requires a durable audit trail; additive, no regression risk to existing behaviour
+- Auto-detect root folder from sharing link — removes the single biggest friction point in CLI mode; interactive mode already does this
+- Post-download verify command — completes the forensic chain-of-custody story; pure consumer of existing `manifest.json`
 
-**Must have (v1 — table stakes and forensic requirements):**
-- Session authentication via browser cookie harvest — prerequisite for everything
-- Recursive folder traversal with `$skiptoken` pagination — must handle >5,000 items; missing pagination is the prior script's failure
-- Streaming download of 2GB+ files — `.E01`/`.L01` forensic evidence files are routinely 1-2GB
-- Resume/skip completed files — multi-hour downloads require interruption tolerance
-- Verification manifest (filename, remote path, size, SHA-256) — non-negotiable forensic deliverable
-- Per-file error reporting with no silent skips — fixes prior script's known failure mode
-- Expected vs. actual file count report — completeness proof
-- Preserve folder structure locally
-- User-specified download destination
-- Progress indication (per-file and overall)
+**Should have — v1.1 differentiators and quality-of-life (P1 and P2):**
+- Multi-folder batch download (P1) — primary use case for multi-custodian forensic collections; sequential, not parallel
+- PyPI publish as `sharepoint-dl` (P1) — unlocks distribution beyond the immediate team; complexity is packaging, not application logic
+- Smart session refresh mid-download (P2) — no other SharePoint download tool handles token expiry gracefully; critical for unattended 200+ GB runs
+- Bandwidth throttling `--throttle` flag (P2) — required for office and VPN environments where link saturation creates IT conflicts
+- Config file for saved settings (P2) — quality-of-life for repeat forensic investigators who re-enter the same URL and destination weekly
 
-**Should have (v1.x — after validation):**
-- Audit trail / download log (chain-of-custody, append-only)
-- Post-download integrity re-verification (`verify` subcommand)
-- Configurable concurrency with backoff
-- Dry-run / list-only mode
-
-**Defer (v2+):**
-- Entra B2B auth migration support (OTP retirement completes July 2026; design auth as swappable module now)
-- Cross-platform support (Windows/Linux) — Mac-only meets current deadline
-
-**Anti-features to reject explicitly:** incremental sync, GUI, upload capability, parallel chunked download, automatic re-auth loops, file filtering, cloud-to-cloud transfer.
+**Defer to v1.2+:**
+- Incremental sync mode — SharePoint REST lacks a reliable last-modified-since delta for external guest sessions; full re-enumeration with skip-if-exists already handles re-runs adequately
+- Parallel batch execution — multiplies concurrent HTTP load and auth complexity; sequential batch is safe, predictable, and rate-limit-safe
+- Per-worker bandwidth cap — users think in total bandwidth, not per-worker; per-worker creates false precision and confusing math
 
 ### Architecture Approach
 
-The architecture is a six-layer pipeline with strict separation between the forensic deliverable (manifest) and the operational state (resume tracking). The two-phase Enumerate-Then-Download pattern is mandatory — interleaving enumeration and download makes it impossible to report a meaningful completeness count, which is a forensic requirement. The auth module is deliberately isolated because it is the highest-uncertainty component in the system and must be swappable without touching download logic.
+v1.1 adds four new modules to the existing codebase without restructuring it: `auth/refresh.py` (mid-download re-auth trigger), `downloader/throttle.py` (token-bucket rate limiter), `manifest/verifier.py` (disk re-hash vs manifest comparison), and `cli/config.py` (load/save config). Three existing modules receive targeted modifications: `engine.py` gets throttle and refresh hooks plus the ETA column; `cli/main.py` gets the verify command, batch loop, and config pre-fill; `pyproject.toml` gets PyPI metadata. Six modules remain completely untouched (browser.py, session.py, traversal.py, job_state.py, manifest/writer.py, `__main__.py`).
 
-**Major components:**
-1. **Auth Module** (`auth/`) — Playwright session harvest; returns `requests.Session` with injected cookies; isolated behind clean interface for OTP→Entra B2B swap
-2. **File Enumerator** (`enumerator/`) — recursive `GetFolderByServerRelativeUrl` calls with `$skiptoken` pagination; returns flat `List[FileEntry]` before any downloads start
-3. **Download Engine** (`downloader/`) — bounded `ThreadPoolExecutor` (3-4 workers); streaming chunks + incremental SHA-256; explicit `failed` list; `tenacity` retry on 429/5xx; halt on 401/403
-4. **Job State** (`state/`) — `state.json` written atomically after each file; enables resume; separate from manifest
-5. **Manifest Writer** (`manifest/`) — append-only forensic deliverable; SHA-256 per file computed during streaming; finalized at run completion
-6. **CLI Orchestrator** (`cli/main.py`) — thin wiring layer; collects all inputs before auth; prints summary with non-zero exit if any failures
+**Major components (v1.1 target state):**
+1. `cli/main.py` — TUI orchestration and all commands (download/verify/list/auth); modified to add verify command, batch loop, and config pre-fill
+2. `downloader/engine.py` — concurrent download orchestration with throttle and refresh hooks; modified to accept `TokenBucket | None` and `sharing_url` parameters
+3. `auth/refresh.py` (NEW) — mid-download re-auth; called from the main thread after workers drain, never from inside a worker thread (Playwright GUI constraint)
+4. `downloader/throttle.py` (NEW) — single shared token-bucket rate limiter; one instance per download run, passed to all workers via `on_chunk` callback
+5. `manifest/verifier.py` (NEW) — pure local disk re-hash; no session, no network, no side effects; reads `manifest.json`, re-hashes each file, reports mismatches
+6. `cli/config.py` (NEW) — load/save `~/.sharepoint-dl/config.json`; defaults layer only, never overrides explicit CLI flags
+
+**Key architectural constraints from research:**
+- Session refresh must run on the main thread, not inside a worker thread (Playwright opens a real browser window; calling from a non-main thread risks GUI issues on some platforms)
+- Token bucket must be a single shared instance across all workers, not instantiated per worker (per-worker means effective bandwidth = `workers × limit`)
+- Each batch job must have its own destination subdirectory, `state.json`, `manifest.json`, and log file (shared state.json causes collision and destroys forensic per-custodian evidence boundaries)
+- Config file precedence is strictly: explicit CLI arg > config file > hardcoded default (config file is never mandatory; saves only on successful completion)
+- No `StreamHandler` competing with Rich's terminal control (log output routes to file-only handler)
 
 ### Critical Pitfalls
 
-1. **Pagination truncation causes silent missing files** — `GetFolderByServerRelativeUrl/Files` returns ~100 items by default with no error; must follow `@odata.nextLink` in a loop. This is almost certainly the direct cause of the prior script's silent omissions. Verify enumerated count against SharePoint UI before trusting the file list.
+1. **PyPI name `spdl` is taken by Meta's data loading library** — `pip install spdl` installs the wrong package. Use `sharepoint-dl` (matches existing GitHub slug). Verify at pypi.org before any packaging work. This is a hard blocker that must be resolved as the first task of Phase 1.
 
-2. **Silent skip via bare `except: continue`** — the other likely cause of prior script failures. Every exception must be caught, logged, and appended to an explicit `failed` list. Tool must exit non-zero if any file failed. Never acceptable in a forensic context.
+2. **Multiple workers trigger concurrent re-auth races** — when a session expires with 3-8 workers active, all workers detect 401 nearly simultaneously. Without a `threading.Lock` around the refresh operation, multiple Playwright browser windows open concurrently and may corrupt `session.json`. Use check-lock-check (double-checked locking): first thread to acquire the lock performs re-auth; subsequent threads re-check session validity before attempting another browser launch.
 
-3. **Large file truncation without streaming** — `response.content` on a 2GB file causes OOM or socket timeout, producing a truncated local file with no error. Use `stream=True` + `iter_content(chunk_size=8MB)` for every download. Use `download.aspx` URL (not `/$value`) for large files — the `/$value` endpoint has a confirmed bug for large files (sp-dev-docs#5247).
+3. **Token bucket scope: per-worker multiplies bandwidth** — instantiating a `TokenBucket` inside the worker function gives each worker its own independent rate limit. With 4 workers each capped at 1 MB/s, actual throughput is 4 MB/s. The bucket must be a single shared instance created before the `ThreadPoolExecutor`, passed to all workers. Use `time.monotonic()` not `time.time()` for refill calculations.
 
-4. **Auth expiry mid-run causing silent 401/403** — FedAuth/rtFa cookies expire in 1-8 hours. Treat 401/403 as hard halt requiring re-auth, not as retriable errors. Validate session with a probe request before starting a large batch.
+4. **Throttle sleep inside the chunk loop breaks streaming** — sleeping inside `on_chunk` to enforce a rate limit stalls the active HTTP response; SharePoint's server-side read timeout fires and produces `ChunkedEncodingError`. Throttle at the pre-request level, or use a leaky bucket that absorbs burst without stalling the active stream.
 
-5. **OTP auth model mismatch** — the project brief assumes email+OTP; that model is retired as of July 2025 for new links. Manually probe the specific sharing link to determine whether it triggers OTP or Entra B2B before building any auth logic. Design the auth layer as swappable regardless.
+5. **Playwright browsers not installed after `pip install`** — `playwright install chromium` is a required manual post-install step that `pip` cannot automate. Without a startup check that detects missing binaries and prints an actionable error, users see an opaque Playwright traceback. Add the check to `__main__.py` before publishing.
+
+6. **Log file `StreamHandler` competing with Rich TUI** — adding `logging.StreamHandler(sys.stderr)` while Rich's live progress is active garbles the progress bar rendering. Route all audit output to a file-only `FileHandler`; let Rich own the terminal entirely.
+
+7. **Batch state.json collision** — two batch jobs pointing to the same destination directory will collide in `state.json` and the second job may report all files as already complete. Each batch job must write to a distinct subdirectory of the user-specified destination.
 
 ## Implications for Roadmap
 
-Based on the dependency graph from ARCHITECTURE.md and the pitfall-to-phase mapping from PITFALLS.md, a 3-phase structure is recommended. The build order is dictated by hard dependencies: auth must be proven before enumeration, enumeration before download, download before manifest. Each phase has a clearly testable deliverable.
+Based on the combined dependency analysis from ARCHITECTURE.md and the pitfall-to-phase mapping from PITFALLS.md, a three-phase structure is recommended. The build order follows the risk gradient: low-risk isolated changes first, new contained modules second, cross-cutting concurrency changes last.
 
-### Phase 1: Foundation — Auth and Folder Enumeration
+### Phase 1: Zero-Risk Wins
+**Rationale:** Four features that require no new modules, carry no regression risk to the existing download path, and can be shipped and verified independently. Resolving the PyPI name conflict must be the first task — it is a hard blocker for the publish feature and costs nothing to resolve early. Getting these four done first clears them from the risk register and delivers visible value immediately.
+**Delivers:** ETA and download speed display in the progress bar; timestamped audit log written to `~/.sharepoint-dl/logs/`; `--root-folder` made optional in CLI `list` and `download` commands via auto-detect; PyPI package published as `sharepoint-dl` with post-install Playwright startup check
+**Addresses:** ETA display (table stakes), log file (table stakes), auto-detect folder (table stakes), PyPI publish (distribution)
+**Avoids:** Pitfall A (PyPI name — verify and claim `sharepoint-dl` before writing any packaging code); Pitfall G (Playwright post-install — add startup check before publishing); Pitfall K (log + Rich — file-only handler, no StreamHandler)
+**Research flag:** None — all four features use documented stdlib and Rich patterns. ETA is a single-line change to `_make_progress()`. Log file is standard Python `logging.FileHandler`. Auto-detect is a redirect follow using existing `_resolve_sharing_link()`. PyPI publish follows the standard `pyproject.toml` + twine workflow.
 
-**Rationale:** Everything else depends on a working authenticated session and a correct, complete file listing. Auth is the highest-risk component (auth flow is uncertain until tested against the actual sharing link). Enumeration must be proven complete — with pagination verified against SharePoint UI count — before building any download logic on top of it. Discovering auth or pagination issues late is expensive. Address pitfalls 1 and 4-5 here.
+### Phase 2: New Contained Modules
+**Rationale:** Three features that each add one new module with clean, independently testable interfaces and no changes to the core download engine concurrency model. Medium complexity, contained blast radius.
+**Delivers:** `~/.sharepoint-dl/config.json` saved on successful run and pre-filling TUI prompts; `--throttle <limit>` flag enforcing aggregate bandwidth across all workers; `spdl verify <dest_dir>` command re-hashing all downloaded files against `manifest.json`
+**Addresses:** Config file (P2 quality-of-life), bandwidth throttling (P2 office/VPN), verify command (P1 forensic completeness)
+**Avoids:** Pitfall E (shared token bucket, not per-worker); Pitfall F (throttle at pre-request level, not mid-stream sleep — test with 500 MB file at low limit); Pitfall J (config precedence strictly CLI > config > defaults; use `.get()` with defaults throughout; warn on unrecognised keys, don't crash)
+**Research flag:** Throttle interaction with the existing Retry-After backoff needs empirical testing — download a large file at a low throttle limit (100 KB/s) with 3+ workers and confirm no `ChunkedEncodingError` and no measured bandwidth exceeding the limit. No external research needed.
 
-**Delivers:** A working `requests.Session` from Playwright cookie harvest; a verified flat file list from recursive folder traversal with full pagination; project scaffold with `uv`, module structure, and `ruff`/`pytest` configured.
-
-**Addresses features:** Session authentication, recursive folder traversal with pagination, dry-run/list-only mode (enumerate only, print count and exit).
-
-**Avoids:** OTP vs Entra B2B mismatch (probe the actual link first), pagination truncation (verify count against UI), Graph API temptation.
-
-**Must validate:** Enumerated file count matches SharePoint browser UI count for the target folder before proceeding.
-
-### Phase 2: Download Engine — Streaming, Retry, Resume, and Error Handling
-
-**Rationale:** Once enumeration is proven, build the download loop with all reliability mechanisms from the start — not as afterthoughts. The error-tracking scaffolding (`failed` list, non-zero exit) must be built first, before any download logic, to ensure silent skips are structurally impossible. Streaming and retry are not optional improvements — they are prerequisites for correctness on 2GB files and SharePoint throttling. Address pitfalls 2, 3, and partial 4.
-
-**Delivers:** Complete download loop with `ThreadPoolExecutor`, `tenacity` retry on 429/5xx, hard halt on 401/403, streaming + incremental SHA-256, resume via `state.json`, per-file error reporting, and progress output via `rich`.
-
-**Addresses features:** Streaming large-file download, resume/skip completed files, per-file error reporting, progress indication, configurable concurrency with backoff.
-
-**Avoids:** Exception swallowing, non-streamed downloads, ignoring `Retry-After` headers, treating auth expiry as a retriable error.
-
-**Must validate:** Intentionally inject a 403 mid-run and confirm it halts with a clear message; test with a file >1GB and verify hash; kill mid-run and verify resume works.
-
-### Phase 3: Forensic Deliverables — Manifest, Verification, and CLI Polish
-
-**Rationale:** With a correct, complete, reliable download proven in Phase 2, build the forensic output layer. Manifest generation must be last because it depends on a correct download having occurred — but its schema and append behavior should be designed not to conflict with the `state.json` operational state. Address pitfall 6 (integrity model) and finalize CLI UX.
-
-**Delivers:** Final `manifest.json` with filename, remote path, size, SHA-256, and per-file download status; expected vs. actual count report; non-zero exit code on any failures; clean end-of-run summary; all CLI inputs collected before auth starts.
-
-**Addresses features:** Verification manifest (SHA-256), expected vs. actual count report, CLI polish, audit trail / download log (append-only, v1.x), post-download re-verification subcommand (v1.x).
-
-**Avoids:** Server-side hash reliance (compute SHA-256 from local bytes only), MD5 in manifest (use SHA-256 minimum), conflating operational state with forensic manifest.
-
-**Must validate:** Manifest file count matches SharePoint UI count; re-run `verify` subcommand against completed download; confirm non-zero exit when any file fails.
+### Phase 3: Cross-Module and Concurrency Features
+**Rationale:** Two features that touch the TUI interaction loop (batch) and the auth-halt concurrency model (session refresh). These are the highest-complexity, highest-regression-risk changes in v1.1. Building them last ensures the download infrastructure is stable and that Phase 1 logging is in place to capture auth events for chain-of-custody before adding automated re-auth.
+**Delivers:** Interactive "Add another folder?" TUI loop queuing multiple `(folder_path, dest_dir)` jobs sequentially with per-job summaries; `auth/refresh.py` automatically re-harvesting the session mid-download on 401, pausing the progress display cleanly, then resuming from the failed file
+**Addresses:** Multi-folder batch (P1 — primary forensic use case), session refresh (P2 — highest-leverage reliability feature for long unattended runs)
+**Avoids:** Pitfall B (concurrent reauth race — check-lock-check pattern, one browser window even with 4+ workers hitting 401 simultaneously); Pitfall C (session object mutation race — pause all workers, replace session, resume); Pitfall D (Playwright blocks progress — call `progress.stop()` before browser launch, restart with correct `completed` values after); Pitfall H (batch state collision — each job gets its own subdirectory); Pitfall I (batch partial failure — per-job result table printed at end, auth expiry halts and offers to resume from failed job)
+**Research flag:** Session refresh requires testing against a real SharePoint session expiry — difficult to automate in CI and must be validated manually with an actual expiring guest session. Critically, the refresh path must be verified against an Entra B2B guest account (not just legacy OTP), since the July 2026 retirement deadline means OTP may not be available during testing on some tenants.
 
 ### Phase Ordering Rationale
 
-- **Auth before everything** because without a working authenticated session, no other component can be tested against real SharePoint data. Auth is also the highest-uncertainty component — manual probing of the actual link before writing any auth code is required.
-- **Enumerate before download** because the completeness proof (files expected = files downloaded) is only possible if the full file list is built before any downloads start. This is not a performance optimization; it is a forensic requirement.
-- **Download reliability before manifest** because a manifest built on top of an unreliable download loop is worthless. The download engine must be proven correct — including edge cases (large files, throttling, auth expiry, resume) — before the forensic deliverable is generated from its output.
-- **OTP vs Entra B2B is a Phase 1 discovery task,** not a design decision to make in advance. The auth module interface is fixed; the implementation is determined by what the actual sharing link triggers.
+- **Dependency chain enforces the order:** Auto-detect (Phase 1) makes the multi-folder batch UX clean and must precede batch (Phase 3). Log file (Phase 1) must precede session refresh (Phase 3) because auth events must be logged with timestamps for chain-of-custody. Config file (Phase 2) should precede batch (Phase 3) to allow pre-filling repeated URL entry in the batch loop.
+- **Risk gradient drives sequencing within tiers:** Phase 1 has zero regression risk. Phase 2 adds new isolated modules. Phase 3 modifies the auth-halt flow and TUI loop — the most critical existing paths.
+- **Pitfall resolution sequencing:** Resolving the PyPI name conflict (Pitfall A) as the first task of Phase 1 prevents wasted packaging work. The shared token bucket design (Pitfall E) and concurrency lock pattern (Pitfall B) must be explicitly designed before any code is written in Phases 2 and 3 respectively.
+- **Forensic verify placement:** The verify command is technically low-cost but is placed in Phase 2 rather than Phase 1 because the four Phase 1 features are more urgent table-stakes gaps, and Phase 2 is still well before the v1.1 milestone ship date.
 
 ### Research Flags
 
-Phases likely needing additional research during planning:
-- **Phase 1 (Auth):** The specific auth flow triggered by the target sharing link is unknown until manually probed. The Playwright session capture approach is well-understood, but the downstream flow (OTP code entry vs. Entra B2B MFA) determines the user interaction model. Test before designing.
-- **Phase 2 (Download endpoint):** The `/$value` endpoint has a confirmed large-file bug (sp-dev-docs#5247). The `download.aspx` URL is the recommended alternative but its behavior for guest sessions specifically should be validated against the actual target site before relying on it.
+Phases likely needing empirical validation during implementation (no additional external research needed):
+- **Phase 2 (throttle):** Test a 500 MB file at 100 KB/s with 3 workers. Confirm measured bandwidth is approximately the configured limit, not `workers × limit`. Confirm no `ChunkedEncodingError`. Confirm throttle interacts correctly with the existing `Retry-After` backoff.
+- **Phase 3 (session refresh):** Real SharePoint session expiry is hard to automate in CI. Requires manual validation with an actual expiring Entra B2B guest session (not just OTP). Confirm only one browser window opens with 4+ concurrent workers. Confirm progress display pauses and restarts cleanly with correct byte counts.
 
-Phases with standard patterns (skip research-phase):
-- **Phase 3 (Manifest/CLI):** SHA-256 hashing, JSON manifest structure, CLI argument handling with typer — all well-documented patterns with no SharePoint-specific surprises.
+Phases with standard, well-documented patterns (research-phase not needed):
+- **Phase 1:** ETA column is a one-line change; log file is standard Python `logging`; auto-detect follows existing `_resolve_sharing_link()` call; PyPI publish is standard `pyproject.toml` + twine.
+- **Phase 2 (config, verify):** Config is a plain dataclass with `tomllib`/`tomli-w`; verify is a read-only SHA-256 re-hash with all infrastructure already in `manifest.json`.
 
 ## Confidence Assessment
 
 | Area | Confidence | Notes |
 |------|------------|-------|
-| Stack | HIGH | Core libraries verified via official PyPI/docs. Auth tool selection (Playwright) is well-justified by `storageState()` API and the Entra B2B session model. The only uncertainty is auth flow specifics, which don't affect stack choice. |
-| Features | HIGH | Table stakes are clear and well-supported. Forensic requirements (manifest, chain of custody, no silent skips) are unambiguous. Anti-features are well-reasoned. |
-| Architecture | HIGH | REST API patterns verified against official Microsoft docs. Two-phase enumerate-then-download is standard for bulk download tools with completeness requirements. Module boundaries are clean and independently testable. |
-| Pitfalls | HIGH | Most pitfalls verified against official GitHub issues and Microsoft docs with confirmed reproduction. Pagination truncation and exception swallowing are direct diagnoses of the prior script's failure mode. |
+| Stack | HIGH | One new dep (`tomli-w`); all others validated in v1.0. Official PyPI, Python docs, and Rich source as sources. |
+| Features | HIGH | Based on direct codebase inspection plus competitor feature analysis (wget, aria2c, yt-dlp). Priority split between P1 and P2 is clear and well-reasoned. |
+| Architecture | HIGH | Based on direct inspection of `engine.py`, `main.py`, `session.py`, `job_state.py`, `manifest/writer.py`. All new module interfaces and modification points are precisely identified with integration patterns. |
+| Pitfalls | HIGH (v1.1 implementation) / MEDIUM (auth layer behaviour) | v1.1 pitfalls grounded in codebase analysis and confirmed community concurrency patterns. Auth layer MEDIUM because Entra B2B guest session cookie names and lifetimes under the new flow are not yet empirically verified for this tool. |
 
-**Overall confidence:** MEDIUM-HIGH
+**Overall confidence:** HIGH for implementation decisions. MEDIUM for auth-layer behaviour under Entra B2B migration.
 
 ### Gaps to Address
 
-- **Actual auth flow on target link:** Must probe the specific SharePoint sharing URL manually before Phase 1 implementation begins. Both OTP (legacy, pre-July 2026 links) and Entra B2B (new links) are live in the wild as of March 2026. This is not resolvable from research alone.
-- **`download.aspx` vs `/$value` for guest sessions:** The `/$value` large-file bug is confirmed, but the `download.aspx` URL's behavior for externally-shared guest links specifically needs hands-on validation in Phase 2. It may require a different cookie set or URL construction.
-- **Session cookie lifetime on the target tenant:** The 1-8 hour range is the documented default, but conditional access policies on the host tenant can shorten it significantly. Validate before estimating how long the download window is for a single authenticated session.
+- **PyPI package name:** `spdl` is taken. `sharepoint-dl` is the recommended alternative and must be verified as unclaimed at pypi.org before Phase 1 begins. This is the only external dependency that could block Phase 1 delivery.
+- **Entra B2B session refresh validation:** The Playwright session-harvest architecture is flow-agnostic by design, but the specific cookie names, session lifetime, and re-auth UX for Entra B2B guest accounts have not been verified empirically against a post-migration tenant. Validate in Phase 3 before shipping session refresh.
+- **SharePoint read timeout under throttling:** The exact threshold at which SharePoint's server-side read timeout fires when chunk consumption is deliberately slowed is not documented. The Phase 2 throttle test (500 MB at 100 KB/s) will establish this empirically and inform whether a leaky-bucket or pre-request throttle approach is needed.
 
 ## Sources
 
 ### Primary (HIGH confidence)
-- [Playwright Python auth docs](https://playwright.dev/python/docs/auth) — `storageState()` API, session capture
-- [SharePoint REST API file/folder operations](https://learn.microsoft.com/en-us/sharepoint/dev/sp-add-ins/working-with-folders-and-files-with-rest) — `GetFolderByServerRelativeUrl`, file download
-- [SharePoint sp-dev-docs Issue #5247](https://github.com/SharePoint/sp-dev-docs/issues/5247) — large file `/$value` endpoint bug
-- [PnPCore Issue #228](https://github.com/pnp/pnpcore/issues/228) — TaskCanceled on 2GB+ file downloads
-- [Microsoft MC1243549](https://mc.merill.net/message/MC1243549) — official OTP retirement announcement
-- [Microsoft Learn — SharePoint throttling](https://learn.microsoft.com/en-us/sharepoint/dev/general-development/how-to-avoid-getting-throttled-or-blocked-in-sharepoint-online)
-- [Microsoft Learn — Configurable token lifetimes](https://learn.microsoft.com/en-us/entra/identity-platform/configurable-token-lifetimes)
-- [playwright PyPI 1.58.0](https://pypi.org/project/playwright/), [requests PyPI 2.33.0](https://pypi.org/project/requests/), [rich PyPI 14.1.0](https://pypi.org/project/rich/)
+- Python `tomllib` stdlib docs — read-only TOML, Python 3.11+ built-in
+- `tomli-w` PyPI version 1.2.0 — write TOML, Python 3.9+, MIT license, by hukkin
+- Rich `progress.py` source — confirms `TransferSpeedColumn`, `DownloadColumn`, `TimeRemainingColumn` available natively
+- Python Packaging User Guide — `pyproject.toml` metadata, entry points, classifiers
+- Playwright Python auth docs — `storageState()` API, session harvest pattern
+- Microsoft Learn — SharePoint REST API folder/file operations
+- Python `logging.FileHandler` stdlib docs
+- Direct codebase inspection — `engine.py`, `main.py`, `auth/session.py`, `state/job_state.py`, `manifest/writer.py`
+- PyPI `spdl` (Meta FAIR) — name conflict directly verified at pypi.org/project/spdl/
 
 ### Secondary (MEDIUM confidence)
-- [SharePoint OTP retirement timeline blog](https://steve-chen.blog/2025/06/23/sharepoint-online-otp-authentication-gets-out-of-support-on-july-1st-2025/) — retirement dates, corroborated by Microsoft notices
-- [Guest accounts replacing OTP (March 2026)](https://office365itpros.com/2026/03/06/guest-accounts-spo/) — current state of B2B migration
-- [SharePoint REST API pagination community blog](https://www.robinsandra.com/the-infamous-5000-item-limit-paging-with-the-sharepoint-rest-api/) — `$skiptoken` behavior, consistent with Microsoft Q&A
-- [Office365-REST-Python-Client Issue #553](https://github.com/vgrem/Office365-REST-Python-Client/issues/553) — confirms 404 behavior for external guest files
-- [rclone SharePoint throttling forum](https://forum.rclone.org/t/throttling-of-rclone-with-sharepoint-saga-continues/29874) — throttling behavior in practice
+- Steve Chen Blog + office365itpros.com — OTP retirement timeline, Entra B2B guest account replacement (community authors, corroborated by Microsoft notices)
+- uv build + twine publish workflow — community-confirmed pattern
+- OAuth token refresh race condition patterns — nango.dev and anthropics/claude-code GitHub issue; standard concurrency problem with established solutions
+- Token bucket thread-safe implementation — oneuptime.com; standard algorithm confirmed by multiple independent sources
+- Playwright post-install browser requirement — playwright.dev/python/docs/intro
 
 ### Tertiary (LOW confidence)
-- [httpx vs requests 2025 comparison](https://www.morethanmonkeys.co.uk/article/comparing-requests-and-httpx-in-python-which-http-client-should-you-use-in-2025/) — used only to confirm requests is sufficient for sequential large-file downloads; not a deciding factor
+- httpx vs requests 2025 comparison — third-party blog; used only to confirm that requests is sufficient for sequential large-file downloads; conclusion is independently well-supported
 
 ---
-*Research completed: 2026-03-27*
+*Research completed: 2026-03-30*
 *Ready for roadmap: yes*

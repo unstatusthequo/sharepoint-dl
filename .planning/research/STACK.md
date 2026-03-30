@@ -1,8 +1,99 @@
 # Stack Research
 
 **Domain:** SharePoint bulk file downloader (guest/external auth, forensic manifest)
-**Researched:** 2026-03-27
+**Researched:** 2026-03-27 (v1.0) | Updated: 2026-03-30 (v1.1 additions)
 **Confidence:** MEDIUM — core patterns are well-established; the auth layer has a critical moving-target risk described below.
+
+---
+
+## v1.1 Stack Additions (2026-03-30)
+
+This section covers net-new stack requirements for v1.1. The existing validated stack below is not re-evaluated.
+
+### New Runtime Dependency: One Addition
+
+| Library | Version | Purpose | Why |
+|---------|---------|---------|-----|
+| `tomli-w` | >=1.2.0 | Write TOML config files | stdlib `tomllib` (Python 3.11+) reads TOML but cannot write it. `tomli-w` is the designated write-only counterpart by the same author (hukkin). MIT license, Python >=3.9, ~15KB footprint. Latest release: 1.2.0 (Jan 15, 2025). |
+
+**All other v1.1 features use existing dependencies or stdlib — no additional runtime packages.**
+
+### v1.1 Capability Map
+
+| v1.1 Feature | Implementation | Source |
+|--------------|---------------|--------|
+| Config file (read) | `tomllib` stdlib | Python 3.11+ built-in |
+| Config file (write) | `tomli-w` | New dependency |
+| Timestamped log file | `logging.handlers.TimedRotatingFileHandler` | stdlib |
+| Download speed display | `rich.progress.TransferSpeedColumn` | Already installed |
+| ETA display | `rich.progress.TimeRemainingColumn` | Already installed |
+| Bytes-downloaded display | `rich.progress.DownloadColumn` | Already installed |
+| Bandwidth throttling | Token-bucket loop with `time.sleep()` | stdlib |
+| SHA-256 verify command | `hashlib` (re-hash on disk) | Already used |
+| Auto-detect root folder | `urllib.parse` for URL parsing | stdlib |
+| Multi-folder batch | Loop over existing download logic | No new dep |
+| Smart session refresh on 401 | Extend `tenacity` retry + Playwright re-auth | Already installed |
+
+### New Dev/Publishing Dependencies
+
+| Tool | Version | Purpose | Notes |
+|------|---------|---------|-------|
+| `twine` | >=6.0 | Upload built distributions to PyPI | `uv run twine upload dist/*` after `uv build`. Works with existing `hatchling` backend. No build backend change needed. |
+
+### Installation for v1.1 Additions
+
+```bash
+# One new runtime dep
+uv add tomli-w
+
+# Publishing tooling (dev only)
+uv add --dev twine
+```
+
+### pyproject.toml Changes for PyPI
+
+The `[project.scripts]` entry needs renaming for the `spdl` PyPI package name:
+
+```toml
+[project.scripts]
+spdl = "sharepoint_dl.cli.main:app"
+```
+
+Add required PyPI metadata fields to `[project]`:
+
+```toml
+[project]
+name = "spdl"
+description = "Reliable bulk download tool for SharePoint shared folders"
+readme = "README.md"
+license = { text = "MIT" }
+authors = [{ name = "...", email = "..." }]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+]
+```
+
+### What NOT to Add for v1.1
+
+| Avoid | Why | Use Instead |
+|-------|-----|-------------|
+| `pydantic-settings` | Overkill for a flat config with ~6 keys | `tomllib` + `tomli-w` with a plain dataclass |
+| `tomlkit` | Style-preserving library designed for in-place edits; unnecessary since config is always written fresh | `tomli-w` |
+| `toml` (PyPI) | Unmaintained since 2020, TOML v1.0 compliance gaps | `tomllib` (read) + `tomli-w` (write) |
+| `requests-ratelimiter` | Rate-limits by request count, not by bytes/sec | Token bucket in chunk loop |
+| `aiothrottle` | Async-only; incompatible with sync+ThreadPoolExecutor model | Token bucket in chunk loop |
+| `etaprogress` | Standalone ETA library not needed | `rich.progress.TimeRemainingColumn` |
+| `structlog` | Structured JSON logging overkill for human-readable audit trail | stdlib `logging` + `TimedRotatingFileHandler` |
+| `platformdirs` | Provides XDG/AppData config paths across platforms — add only if config path logic becomes complex | `pathlib.Path.home()` + `os.environ.get('APPDATA')` |
+
+### v1.1 Sources
+
+- [tomli-w PyPI](https://pypi.org/project/tomli-w/) — version 1.2.0, Python >=3.9 (HIGH confidence, official)
+- [tomllib Python stdlib docs](https://docs.python.org/3/library/tomllib.html) — read-only, Python 3.11+ (HIGH confidence, official)
+- [Rich progress.py source](https://github.com/Textualize/rich/blob/master/rich/progress.py) — confirms `TransferSpeedColumn`, `DownloadColumn`, `TimeRemainingColumn` (HIGH confidence, official)
+- [Writing pyproject.toml — Python Packaging User Guide](https://packaging.python.org/en/latest/guides/writing-pyproject-toml/) — entrypoints, metadata (HIGH confidence, official)
+- [uv build + twine publish workflow](https://blog.danwald.me/publish-to-pypi-via-uv-and-github-workflows) — pattern confirmed working (MEDIUM confidence, community)
 
 ---
 
@@ -20,7 +111,7 @@ The PROJECT.md describes "email + one-time code" as the expected auth model. Tha
 
 ---
 
-## Recommended Stack
+## Recommended Stack (v1.0 Baseline)
 
 ### Core Technologies
 
@@ -128,6 +219,7 @@ uv add --dev pytest pytest-playwright ruff
 | `rich==14.1.0` | Python 3.8+ | `Progress` multi-task API stable. |
 | `typer==0.15.x` | Python 3.7+ | Built on Click 8.x. |
 | `tenacity==9.x` | Python 3.8+ | `@retry` decorator API stable. |
+| `tomli-w==1.2.0` | Python 3.9+ | Compatible with project's >=3.11 constraint. |
 
 ---
 
@@ -154,7 +246,7 @@ Key insight: hashing during streaming (not post-download) means one I/O pass per
 
 ---
 
-## Sources
+## Sources (v1.0)
 
 - [SharePoint OTP retirement timeline](https://steve-chen.blog/2025/06/23/sharepoint-online-otp-authentication-gets-out-of-support-on-july-1st-2025/) — MEDIUM confidence (independent blog, corroborated by Microsoft Q&A results)
 - [Guest accounts replacing OTP for SPO external access (March 2026)](https://office365itpros.com/2026/03/06/guest-accounts-spo/) — MEDIUM confidence (established Microsoft 365 community author)
@@ -169,4 +261,4 @@ Key insight: hashing during streaming (not post-download) means one I/O pass per
 ---
 
 *Stack research for: SharePoint bulk downloader (guest auth, forensic manifest)*
-*Researched: 2026-03-27*
+*v1.0 researched: 2026-03-27 | v1.1 additions: 2026-03-30*

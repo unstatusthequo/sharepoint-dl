@@ -1,63 +1,73 @@
 # Architecture Research
 
-**Domain:** SharePoint bulk file downloader with browser-session auth
-**Researched:** 2026-03-27
-**Confidence:** MEDIUM — REST API patterns HIGH, auth layer MEDIUM (OTP retirement changes the landscape)
+**Domain:** SharePoint bulk file downloader — v1.1 feature integration
+**Researched:** 2026-03-30
+**Confidence:** HIGH — based on direct codebase inspection, no external unknowns
 
 ## Standard Architecture
 
-### System Overview
+### System Overview (v1.1 target state)
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                         CLI Layer                            │
-│  ┌─────────────────────────────────────────────────────┐    │
-│  │  main.py — entry point, argument parsing, orchestration│  │
-│  └─────────────────────────────────────────────────────┘    │
-├─────────────────────────────────────────────────────────────┤
-│                      Core Services                           │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────────┐  │
-│  │  Auth Module │  │  Enumerator  │  │  Download Engine │  │
-│  │  (session +  │  │  (folder     │  │  (concurrent,    │  │
-│  │   cookies)   │  │   traversal) │  │   retry, stream) │  │
-│  └──────┬───────┘  └──────┬───────┘  └────────┬─────────┘  │
-│         │                 │                    │            │
-│         └─────────────────┴────────────────────┘           │
-│                           │                                 │
-│                  ┌─────────┴──────────┐                     │
-│                  │  HTTP Client Layer  │                     │
-│                  │  (requests/httpx +  │                     │
-│                  │   shared session)   │                     │
-│                  └────────────────────┘                     │
-├─────────────────────────────────────────────────────────────┤
-│                       State Layer                            │
-│  ┌───────────────┐  ┌──────────────┐  ┌──────────────────┐  │
-│  │  Job State    │  │  Manifest    │  │  Progress Store  │  │
-│  │  (completed,  │  │  Writer      │  │  (in-memory +    │  │
-│  │  failed,      │  │  (filename,  │  │   console output)│  │
-│  │  pending)     │  │  size, hash) │  └──────────────────┘  │
-│  └───────────────┘  └──────────────┘                        │
-├─────────────────────────────────────────────────────────────┤
-│                     Storage Layer                            │
-│  ┌──────────────────┐  ┌───────────────────────────────┐   │
-│  │  Local Filesystem │  │  manifest.json / .csv         │   │
-│  │  (mirrored paths) │  │  (written at completion)      │   │
-│  └──────────────────┘  └───────────────────────────────┘   │
-└─────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│                          CLI Layer                               │
+│  ┌──────────────────────────────────────────────────────────┐   │
+│  │  main.py — TUI flow, commands: auth/list/download/verify  │   │
+│  └──────────────────────────────────────────────────────────┘   │
+│  ┌────────────────────────────────────────────────────────┐     │
+│  │  config.py (NEW) — load/save ~/.sharepoint-dl/config.json│    │
+│  └────────────────────────────────────────────────────────┘     │
+├─────────────────────────────────────────────────────────────────┤
+│                       Core Services                              │
+│  ┌──────────────┐  ┌──────────────┐  ┌───────────────────────┐  │
+│  │  auth/       │  │  enumerator/ │  │  downloader/          │  │
+│  │  browser.py  │  │  traversal.py│  │  engine.py            │  │
+│  │  session.py  │  │              │  │  throttle.py (NEW)    │  │
+│  │  refresh.py  │  │              │  │                       │  │
+│  │  (NEW)       │  │              │  │                       │  │
+│  └──────┬───────┘  └──────┬───────┘  └──────────┬────────────┘  │
+│         │                 │                      │              │
+│         └─────────────────┴──────────────────────┘             │
+│                           │                                     │
+│                  ┌─────────┴────────────┐                       │
+│                  │  requests.Session     │                       │
+│                  │  (shared, auth-scoped)│                       │
+│                  └──────────────────────┘                       │
+├─────────────────────────────────────────────────────────────────┤
+│                        State / Output Layer                      │
+│  ┌───────────────┐  ┌───────────────┐  ┌───────────────────┐   │
+│  │  state/       │  │  manifest/    │  │  logging (NEW)    │   │
+│  │  job_state.py │  │  writer.py    │  │  FileHandler per  │   │
+│  │               │  │  verifier.py  │  │  dest dir         │   │
+│  │               │  │  (NEW)        │  │                   │   │
+│  └───────────────┘  └───────────────┘  └───────────────────┘   │
+├─────────────────────────────────────────────────────────────────┤
+│                       Storage Layer                              │
+│  ┌─────────────────────┐  ┌─────────────────────────────────┐  │
+│  │  dest_dir/           │  │  ~/.sharepoint-dl/              │  │
+│  │  state.json          │  │  session.json                   │  │
+│  │  manifest.json       │  │  config.json (NEW)              │  │
+│  │  download.log (NEW)  │  │                                 │  │
+│  └─────────────────────┘  └─────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
 ### Component Responsibilities
 
-| Component | Responsibility | Typical Implementation |
-|-----------|----------------|------------------------|
-| CLI / Orchestrator | Entry point, flag parsing, wires components together, prints summary | `argparse` or `click`, synchronous bootstrap |
-| Auth Module | Prompts for email + OTP (or Entra B2B flow), captures session cookies (FedAuth, rtFa), provides authenticated HTTP session | `requests.Session` or Playwright for browser-backed flows |
-| HTTP Client Layer | Shared, authenticated session used by all components; handles cookie injection, retries, timeouts | `requests.Session` with injected cookies + `urllib3` retry adapter |
-| File Enumerator | Walks SharePoint folder tree recursively, builds a flat list of (file_url, server_relative_path, size) tuples | SharePoint REST `_api/web/GetFolderByServerRelativeUrl('{path}')/Files` + `/Folders` recursion |
-| Download Engine | Consumes the file list; downloads files concurrently with bounded parallelism; writes bytes to local paths; computes hash during streaming | `concurrent.futures.ThreadPoolExecutor` or `asyncio` + `aiohttp`; HTTP Range headers for 2 GB files |
-| Job State | Tracks which files are completed, failed, or pending; persists to disk so resumption works without re-downloading | JSON file (`state.json`) written after each completed file |
-| Manifest Writer | Appends a row per file (name, remote path, size, SHA-256) after each download; writes final manifest | CSV or JSON; hashed incrementally during download streaming |
-| Progress Store | In-process counters surfaced to console; no persistence needed | `tqdm` or plain print; updated by download engine |
+| Component | Responsibility | New / Modified / Unchanged |
+|-----------|----------------|---------------------------|
+| `cli/main.py` | TUI flow, commands, orchestration | Modified — verify command, batch loop, config pre-fill, ETA column, throttle prompt |
+| `cli/config.py` | Load/save `~/.sharepoint-dl/config.json` | **NEW** |
+| `auth/browser.py` | Playwright session harvest | Unchanged |
+| `auth/session.py` | Cookie persistence, session build, validate | Unchanged |
+| `auth/refresh.py` | Mid-download re-auth trigger | **NEW** |
+| `enumerator/traversal.py` | Recursive folder walk, pagination | Unchanged |
+| `downloader/engine.py` | Concurrent download orchestration, retry, progress | Modified — session refresh hook, throttle hook, ETA column |
+| `downloader/throttle.py` | Token-bucket rate limiter | **NEW** |
+| `state/job_state.py` | Thread-safe JSON state persistence | Unchanged |
+| `manifest/writer.py` | Forensic manifest generation | Unchanged |
+| `manifest/verifier.py` | Post-download SHA-256 re-verification | **NEW** |
+| `pyproject.toml` | Package metadata | Modified — PyPI classifiers, `spdl` entry point |
 
 ## Recommended Project Structure
 
@@ -65,252 +75,396 @@
 sharepoint_dl/
 ├── auth/
 │   ├── __init__.py
-│   ├── session.py          # Build authenticated requests.Session from cookies
-│   └── otp_flow.py         # Interactive email + OTP prompt, returns cookies
-├── enumerator/
-│   ├── __init__.py
-│   └── traversal.py        # Recursive folder walk via SharePoint REST API
-├── downloader/
-│   ├── __init__.py
-│   ├── engine.py           # Concurrent download orchestration
-│   └── streaming.py        # Chunked streaming + hash computation for large files
-├── state/
-│   ├── __init__.py
-│   └── job.py              # Load/save state.json; completed/failed/pending sets
-├── manifest/
-│   ├── __init__.py
-│   └── writer.py           # Append rows; finalize manifest file
+│   ├── browser.py          # Playwright session harvest (unchanged)
+│   ├── session.py          # Cookie persistence, load/validate (unchanged)
+│   └── refresh.py          # NEW: mid-download re-auth trigger
 ├── cli/
 │   ├── __init__.py
-│   └── main.py             # argparse entry; wires all modules; prints summary
-└── tests/
-    ├── test_traversal.py
-    ├── test_engine.py
-    └── fixtures/           # Mocked API responses
+│   ├── main.py             # Modified: verify cmd, batch loop, config pre-fill
+│   └── config.py           # NEW: ~/.sharepoint-dl/config.json read/write
+├── downloader/
+│   ├── __init__.py
+│   ├── engine.py           # Modified: refresh hook, throttle hook, ETA column
+│   └── throttle.py         # NEW: token-bucket rate limiter
+├── enumerator/
+│   ├── __init__.py
+│   └── traversal.py        # Unchanged
+├── manifest/
+│   ├── __init__.py
+│   ├── writer.py           # Unchanged
+│   └── verifier.py         # NEW: disk re-hash vs manifest comparison
+├── state/
+│   ├── __init__.py
+│   └── job_state.py        # Unchanged
+└── __main__.py             # Unchanged
 ```
 
 ### Structure Rationale
 
-- **auth/:** Isolated because the auth mechanism is the highest-uncertainty component (OTP retirement, Entra B2B transition). Keeping it behind a clean interface lets the rest of the tool survive an auth swap without rewriting.
-- **enumerator/:** Separate from downloader because enumeration and downloading have different error profiles. Full enumeration before download enables a "files expected" count for completeness reporting.
-- **downloader/:** Split into engine (concurrency control, retry) and streaming (byte-level I/O + hashing) because these are independently testable.
-- **state/:** Dedicated module so the job file schema is owned in one place. The downloader and CLI both read/write through this module.
-- **manifest/:** Separate from state — state is operational (resume), manifest is the forensic deliverable. They must not be conflated.
+- **auth/refresh.py separated from session.py:** Session persistence is read-only at runtime. The refresh flow involves launching Playwright mid-download, which is stateful and side-effectful — it belongs in its own module to avoid making `session.py` stateful.
+- **downloader/throttle.py separated from engine.py:** The token-bucket is a standalone, testable component. Engine passes chunk bytes through it; throttle has no knowledge of files or workers.
+- **manifest/verifier.py separated from writer.py:** Writer produces output during download (sequential, at-completion). Verifier is an independent read-only operation that runs on demand after download. These have different I/O patterns and different error modes — merging them would couple unrelated responsibilities.
+- **cli/config.py separated from main.py:** main.py is already long. Config logic (schema, defaults, load, save, merge with CLI args) is self-contained enough to isolate cleanly. main.py calls `load_config()` at startup.
 
 ## Architectural Patterns
 
-### Pattern 1: Enumerate-Then-Download (Two-Phase)
+### Pattern 1: Session Refresh via Pause-and-Resume
 
-**What:** Complete the full recursive folder walk and build a file list before starting any downloads. The manifest can then report "N files found, M downloaded."
-**When to use:** Always for this tool. It is the only way to produce a meaningful completeness report. Interleaving enumeration and download makes it impossible to know how many files remain.
-**Trade-offs:** Adds a few seconds of latency before downloads start. Worth it for the completeness guarantee.
+**What:** When `AuthExpiredError` fires inside a download worker, signal a shared `auth_halt` event (already exists), wait for all in-flight workers to drain, re-harvest the session via `auth/refresh.py`, update the shared `requests.Session` cookie jar in place, then re-submit failed files.
 
-**Example:**
+**When to use:** Session refresh only. All other errors (429, 5xx) continue to use the existing tenacity retry path.
+
+**Trade-offs:** Patching `session.cookies` in place requires the shared session to be mutable across threads — it already is (`requests.Session` is not thread-safe for concurrent writes, but cookie replacement is a single operation). Workers that haven't started their current request yet will pick up fresh cookies naturally. In-flight requests that already sent a stale cookie will fail and enter the retry loop with fresh cookies on the next attempt.
+
+**Integration point:** `engine.py` — `download_all()` currently raises `auth_error[0]` after cancelling futures. Replace that raise with a call to `auth/refresh.py`, then re-queue the auth-failed files.
+
 ```python
-# Phase 1: enumerate
-file_list = enumerator.walk(root_url, session)  # returns List[FileEntry]
-print(f"Found {len(file_list)} files")
-
-# Phase 2: download
-results = engine.download_all(file_list, dest_dir, session, state)
-manifest.finalize(results, dest_dir)
+# In engine.py download_all()
+# BEFORE (v1.0): raise auth_error[0]
+# AFTER (v1.1):
+from sharepoint_dl.auth.refresh import refresh_session_blocking
+refresh_session_blocking(session, sharing_url)      # blocks, opens browser
+# Re-queue files that failed with auth_expired
+for url, reason in state.failed_files():
+    if reason == "auth_expired":
+        state.set_status(url, FileStatus.PENDING, error=None)
+# Then fall through to existing retry loop
 ```
 
-### Pattern 2: Cookie-Injected requests.Session
+### Pattern 2: Token-Bucket Throttle via on_chunk Callback
 
-**What:** After authentication, extract the FedAuth and rtFa cookies from the browser session and inject them into a `requests.Session`. Every subsequent REST call and file download uses this session.
-**When to use:** Appropriate for the Entra B2B guest flow where auth happens in a real browser (Playwright) and the resulting cookies are then harvested for the programmatic download phase.
-**Trade-offs:** Cookies have a finite lifetime (typically 8–24 hours). For very large downloads that span a session expiry, the tool needs to detect a 401/403 and re-authenticate. For the target workload (one-shot forensic download), session expiry mid-run is a real risk to plan for.
+**What:** The existing `on_chunk` callback already fires for every chunk written. Insert the throttle check there: record bytes sent, sleep if the rolling rate exceeds the target.
 
-**Example:**
+**When to use:** Only when `--throttle` is provided. Default is unlimited (no-op path).
+
+**Trade-offs:** Sleeping inside a worker thread pauses that worker but not others. With N workers each respecting the per-worker share (`target_bps / workers`), the aggregate approaches the target. A shared token bucket (with a lock) is more accurate across workers but adds lock contention on every chunk. For the expected use case (1-4 workers, MB/s scale), per-worker division is accurate enough and simpler.
+
+**Integration point:** `engine.py` — the `on_chunk` closure already calls `progress.update()`. Extend it to also call `throttle.consume(n)` if a throttle is configured.
+
 ```python
-session = requests.Session()
-session.cookies.set("FedAuth", fed_auth_value, domain=".sharepoint.com")
-session.cookies.set("rtFa", rtfa_value, domain=".sharepoint.com")
-# All REST and download calls share this session
-resp = session.get(f"{site_url}/_api/web/GetFolderByServerRelativeUrl('{path}')/Files")
+# downloader/throttle.py
+class TokenBucket:
+    def __init__(self, rate_bytes_per_sec: float): ...
+    def consume(self, n: int) -> None:
+        # Compute sleep needed to maintain rate; time.sleep() if needed
+        ...
+
+# In engine.py
+def on_chunk(n: int, _t=_task, _o=_overall) -> None:
+    progress.update(_t, advance=n)
+    if _o is not None:
+        progress.update(_o, advance=n)
+    if throttle is not None:
+        throttle.consume(n)         # sleeps if over budget
 ```
 
-### Pattern 3: Streaming Download with Incremental Hashing
+### Pattern 3: ETA via Rich TimeRemainingColumn
 
-**What:** Download files in chunks (`iter_content` or `iter_chunks`), write each chunk to disk, and feed it to a running hash object simultaneously. Never load a full 2 GB file into memory.
-**When to use:** Required for all files in this tool. Even small files should use the same streaming path to keep the codebase simple and tested.
-**Trade-offs:** Slightly more complex than a one-shot download, but eliminates OOM risk and means the hash is computed for free during the download pass.
+**What:** Replace `TimeElapsedColumn` (or add alongside it) with `TimeRemainingColumn` on the overall progress task. Rich computes ETA natively from `completed / total` and elapsed time — no custom logic needed.
 
-**Example:**
+**When to use:** Always. This is a single-line change to `_make_progress()` in `engine.py`.
+
+**Trade-offs:** Rich's ETA is based on average rate since start, not rolling average. For downloads where throughput ramps up (slow start due to session overhead), ETA will be pessimistic early and stabilize. This is acceptable behavior.
+
+**Integration point:** `engine.py` — `_make_progress()` column list.
+
 ```python
-import hashlib
+from rich.progress import TimeRemainingColumn
 
-def download_streaming(url, dest_path, session):
-    h = hashlib.sha256()
-    with session.get(url, stream=True, timeout=(30, 300)) as resp:
-        resp.raise_for_status()
-        with open(dest_path, "wb") as f:
-            for chunk in resp.iter_content(chunk_size=8 * 1024 * 1024):  # 8 MB chunks
-                f.write(chunk)
-                h.update(chunk)
-    return h.hexdigest()
+def _make_progress() -> Progress:
+    return Progress(
+        SpinnerColumn(style="bright_magenta"),
+        TextColumn("[bright_cyan]{task.description}[/bright_cyan]"),
+        BarColumn(bar_width=None, ...),
+        DownloadColumn(binary_units=True),
+        TransferSpeedColumn(),
+        TimeRemainingColumn(),      # replaces TimeElapsedColumn
+        TextColumn("{task.fields[status]}"),
+    )
 ```
+
+### Pattern 4: Config File as Defaults Layer
+
+**What:** `cli/config.py` loads `~/.sharepoint-dl/config.json` at startup. It returns a typed config object with `None` for any unset key. `main.py` uses config values as prompt defaults — if config has a URL, pre-fill the URL prompt; if it has a destination, pre-fill that. Config is never mandatory; it just reduces repetitive input.
+
+**When to use:** On every interactive invocation and as default values for CLI flags.
+
+**Trade-offs:** Config must not silently override explicit CLI flags. The merge order is: explicit CLI arg > config file default > hardcoded default. Saving config happens at end of successful interactive run (not on failure or cancellation).
+
+**Integration point:** `cli/main.py` — `_interactive_mode_inner()` reads config at top, uses values as `default=` in `Prompt.ask()` calls.
+
+### Pattern 5: Verify Command as Standalone Read-Only Pass
+
+**What:** `spdl verify <dest_dir>` reads `manifest.json` from `dest_dir`, iterates the files list, re-hashes each file from disk, and reports matches vs mismatches. It does not touch `state.json`, does not re-download anything, and has no side effects.
+
+**When to use:** After a download completes, or at any future point to prove chain-of-custody integrity.
+
+**Trade-offs:** Re-reading every file from disk for a 237 GB collection will take minutes. This is expected and acceptable — it's an on-demand command, not part of the normal download flow. No streaming optimization needed; standard `hashlib.sha256()` with 8 MB reads is correct.
+
+**Integration point:** `manifest/verifier.py` does the verification logic. `cli/main.py` adds the `verify` command that calls it.
+
+```python
+# manifest/verifier.py
+def verify_manifest(dest_dir: Path) -> tuple[list[str], list[str]]:
+    """Returns (ok_paths, mismatch_paths)."""
+    manifest = json.loads((dest_dir / "manifest.json").read_text())
+    ok, mismatch = [], []
+    for entry in manifest["files"]:
+        local = dest_dir / entry["local_path"]
+        actual = _sha256_file(local)
+        if actual == entry["sha256"]:
+            ok.append(entry["local_path"])
+        else:
+            mismatch.append(entry["local_path"])
+    return ok, mismatch
+```
+
+### Pattern 6: Log File via Python logging FileHandler
+
+**What:** At the start of a download run, configure a `logging.FileHandler` pointing to `dest_dir/download.log`. All existing `logger.getLogger(__name__)` calls in `engine.py` and `traversal.py` automatically write to this file. Add log calls at key lifecycle points (auth, enumeration complete, each file start/complete/fail, final summary).
+
+**When to use:** Always, for every download run. The log is written alongside `state.json` — in the destination directory, not in `~/.sharepoint-dl/`.
+
+**Trade-offs:** Log files grow unboundedly across re-runs. A simple approach is to append (not overwrite) so resume runs add to the same log. Timestamped entries make multi-run logs readable.
+
+**Integration point:** `cli/main.py` — configure the FileHandler before calling `download_all()`. `engine.py` and `traversal.py` already use `logger`; they need log-level calls added at key points.
+
+### Pattern 7: Multi-Folder Batch via Interactive Queue
+
+**What:** After the user selects a folder and before download starts, the TUI asks "Add another folder?". If yes, repeat folder selection and append to a queue. After all folders are queued, run them sequentially — each folder gets its own `dest_dir`, `state.json`, `manifest.json`, and log file.
+
+**When to use:** TUI mode only. CLI `download` command remains single-folder (multi-target is handled by shell scripting for CLI users).
+
+**Trade-offs:** Sequential (not parallel) folder downloads keeps resource usage predictable and avoids concurrent session issues. Each folder is fully independent — its own state, its own manifest. No changes to `engine.py` needed.
+
+**Integration point:** `cli/main.py` — `_interactive_mode_inner()` wraps the existing folder-select + download block in a loop with an "Add another?" prompt.
+
+### Pattern 8: Auto-Detect Root Folder in CLI Mode
+
+**What:** The `list` and `download` commands already call `_resolve_sharing_link()` in interactive mode. Make `--root-folder` optional in CLI mode by calling `_resolve_sharing_link()` when the flag is absent, and failing with a clear error only if auto-detection also fails.
+
+**When to use:** CLI `list` and `download` commands when `--root-folder` is not provided.
+
+**Trade-offs:** One extra HTTP request (the sharing link redirect) before enumeration begins. Negligible cost.
+
+**Integration point:** `cli/main.py` — `list_files()` and `download()` commands. Make `root_folder` an `Optional[str]` with `default=None`; add auto-detect fallback.
+
+### Pattern 9: PyPI Publish via pyproject.toml + GitHub Actions
+
+**What:** Add PyPI classifiers, license, and the `spdl` console script entry point to `pyproject.toml`. Publish via `uv publish` or `twine`. Add a GitHub Actions workflow for automated publish on version tag.
+
+**When to use:** One-time setup. Does not change runtime behavior.
+
+**Trade-offs:** The package name `spdl` may be taken on PyPI — verify before building toward it. The Playwright browser install (`playwright install chromium`) is a post-install step that cannot be automated by `pip install` alone. Document this in README and provide a `spdl install-deps` command or clear post-install message.
+
+**Integration point:** `pyproject.toml` — metadata, entry points. No code changes to any module.
 
 ## Data Flow
 
-### Auth Flow (startup)
+### v1.1 Interactive Download Flow (with new features)
 
 ```
-User launches tool
+User runs: spdl
     ↓
-CLI prompts for SharePoint URL
+cli/config.py: load ~/.sharepoint-dl/config.json
     ↓
-auth/otp_flow.py opens Playwright browser (headless: False)
-    → user enters email
-    → user receives and enters OTP (or Entra B2B MFA flow)
-    → browser lands on SharePoint page
+main.py: _interactive_mode_inner()
+    Prompt for URL (pre-filled from config if saved)
     ↓
-otp_flow.py extracts FedAuth + rtFa cookies from browser context
+auth check → reuse session or harvest_session()
     ↓
-auth/session.py builds requests.Session with injected cookies
+Resolve sharing link → root_path (auto-detect, already implemented)
     ↓
-Session passed to Enumerator and Download Engine
+Folder browser loop → server_relative_path
+    ↓
+[NEW] "Add another folder?" → build queue = [FolderJob, ...]
+    ↓
+For each FolderJob in queue:
+    enumerate_files()
+    Prompt dest + workers (pre-filled from config)
+    [NEW] Configure log FileHandler → dest_dir/download.log
+    [NEW] Configure throttle (if --throttle flag or config)
+    download_all(session, files, dest, site_url, workers,
+                 throttle=throttle, on_auth_expired=refresh_fn)
+        ↓ (per worker)
+        _download_file() → on_chunk() → throttle.consume(n) [NEW]
+        [NEW] On AuthExpiredError: refresh_session_blocking() → resume
+    generate_manifest()
+    [NEW] Save config on success
+    Completeness report
 ```
 
-### Enumeration Flow
+### Verify Flow (new command)
 
 ```
-Session + root folder URL
+User runs: spdl verify <dest_dir>
     ↓
-enumerator/traversal.py calls:
-  GET /_api/web/GetFolderByServerRelativeUrl('{path}')/Files  → file entries
-  GET /_api/web/GetFolderByServerRelativeUrl('{path}')/Folders → subfolder entries
-    ↓ (recurse for each subfolder)
-Flat List[FileEntry(name, server_relative_url, size, remote_path)]
+cli/main.py: verify()
     ↓
-Returned to CLI, printed as "Found N files"
+manifest/verifier.py: verify_manifest(dest_dir)
+    Read manifest.json
+    For each file: sha256_file(dest_dir / local_path)
+    Compare against manifest["sha256"]
+    ↓
+Return (ok_list, mismatch_list)
+    ↓
+cli prints: N files verified OK, M mismatches [list them]
+Exit 0 if clean, exit 1 if any mismatch or missing file
 ```
 
-### Download Flow
+### Session Refresh Flow (new, triggered mid-download)
 
 ```
-List[FileEntry] + Session + dest_dir + state.json
+Worker: GET file → 401/403
     ↓
-engine.py filters out already-completed files (resume)
+AuthExpiredError raised
     ↓
-ThreadPoolExecutor(max_workers=3) consumes queue
-    ↓ (per file)
-  streaming.py: GET file/$value with stream=True
-    → chunks written to local path
-    → SHA-256 computed incrementally
+engine.py: auth_halt.set() [existing]
+    Cancel remaining futures [existing]
     ↓
-  On success:
-    state.py marks file completed
-    manifest/writer.py appends row (name, path, size, sha256)
-  On failure (after N retries):
-    state.py marks file failed
-    error logged (never silently skipped)
+[NEW] auth/refresh.py: refresh_session_blocking(session, sharing_url)
+    Opens Playwright browser
+    User completes re-auth
+    Browser closes
+    New cookies injected into session.cookies
     ↓
-Engine completes, returns summary
+engine.py: Re-queue auth-failed files as PENDING
+    Fall through to existing retry_round loop
     ↓
-CLI prints: "Downloaded M/N files. X failed."
-Manifest finalized to manifest.csv
+Download resumes with fresh session
 ```
 
 ### Key Data Flows
 
-1. **Auth → REST calls:** FedAuth/rtFa cookies flow from the browser session into every HTTP request. This is the single most fragile dependency in the system.
-2. **Enumerator → Download Engine:** A flat list of `FileEntry` objects. Decoupled — enumerator does not know about concurrency; downloader does not know about API pagination.
-3. **Download Engine → State + Manifest:** Both are written after each successful download. State enables resume; manifest is the forensic deliverable. These writes must be atomic (write to temp file, rename) to avoid corruption on crash.
-4. **State → Download Engine (resume):** On startup, completed file paths are loaded from state.json and filtered out of the download queue.
+1. **Config → CLI prompts:** Config values are defaults only. Explicit CLI args and user input always override.
+2. **throttle.consume() → sleep:** Rate limiting is purely time-based inside the worker thread. No changes to the file data path — bytes still flow directly from `resp.iter_content()` to disk.
+3. **AuthExpiredError → refresh → resume:** The session object passed into `download_all()` is mutated in place (cookies replaced). Workers that haven't fired yet pick up fresh cookies; workers that already fired get retried via the existing retry loop.
+4. **download.log → FileHandler:** The log receives all `logger.*` calls from `engine.py` and `traversal.py`. The CLI adds structured event calls (auth success, enumeration count, final summary) around the calls to lower-level modules.
 
 ## Scaling Considerations
 
-This is a single-user CLI tool, not a multi-tenant service. The relevant scaling axis is file count and file size, not user count.
+This is a single-user CLI tool. The relevant scale axis is total bytes and session lifetime, not user count.
 
 | Scale | Architecture Adjustments |
 |-------|--------------------------|
-| < 500 files, files < 100 MB | Sequential download is acceptable; no concurrency needed |
-| 500–5000 files, some files up to 2 GB | ThreadPoolExecutor with 2–4 workers; streaming downloads mandatory; session expiry risk rises |
-| > 5000 files in a single folder | SharePoint REST API list view threshold (5000 items) becomes a hard blocker — requires pagination via `$skiptoken` or library-level queries instead of folder-level |
+| < 10 GB, single session lifetime | All v1.1 features work as designed |
+| 10–250 GB, may span session expiry | Session refresh (auth/refresh.py) is the critical path; without it, multi-hour runs require manual re-runs |
+| > 250 GB, multi-day runs | Not targeted for v1.1; would require persistent queue across process restarts, which is out of scope |
 
 ### Scaling Priorities
 
-1. **First bottleneck:** SharePoint REST API rate limiting and session expiry. Implement retry with exponential backoff and detect 401/403 as a signal to re-authenticate.
-2. **Second bottleneck:** Local disk write speed for 2 GB files. The 8 MB chunk size handles this well; avoid anything that buffers a full file in memory.
+1. **First bottleneck:** Session expiry on long runs. Session refresh (feature 5) directly addresses this — it is the highest-leverage v1.1 change for reliability.
+2. **Second bottleneck:** Unintended network saturation. Throttle (feature 6) addresses this for shared-connection scenarios.
 
 ## Anti-Patterns
 
-### Anti-Pattern 1: Interleaved Enumerate + Download
+### Anti-Pattern 1: Global Shared Token Bucket Across Worker Threads
 
-**What people do:** Start downloading files as they are discovered during the folder walk, to save time.
-**Why it's wrong:** The tool cannot report "N files expected, M downloaded" if enumeration and download run together. In a forensic context, the inability to state total file count undermines the completeness proof. Also complicates error handling significantly.
-**Do this instead:** Full enumeration first, then download. The extra seconds are worth the architectural clarity.
+**What people do:** Create one `TokenBucket` instance and have all workers call `consume()` with a lock, targeting the full bandwidth limit.
 
-### Anti-Pattern 2: Loading Entire Files into Memory
+**Why it's wrong:** The lock becomes a serialization bottleneck on every 8 MB chunk across all workers. With 3 workers and 8 MB chunks at 50 MB/s, this is approximately 6 lock acquisitions per second — tolerable, but the implementation is complex and error-prone.
 
-**What people do:** `content = response.content` — fetches the whole response body into a bytes object.
-**Why it's wrong:** A 2 GB file requires 2 GB of RAM. The prior Python script that silently skipped files may have been hitting MemoryError or timeout on large files.
-**Do this instead:** Always stream with `stream=True` and iterate `iter_content(chunk_size=8*1024*1024)`.
+**Do this instead:** Divide the target rate by worker count and give each worker its own `TokenBucket(rate / workers)`. Accuracy within 10% is sufficient for a bandwidth cap; no lock contention.
 
-### Anti-Pattern 3: Ignoring Session Expiry
+### Anti-Pattern 2: Blocking the Main Thread on Session Refresh
 
-**What people do:** Authenticate once at startup and assume cookies are valid for the entire run.
-**Why it's wrong:** SharePoint FedAuth cookies are session cookies (expire on browser close, or after 8–24 hours). A long download run (100+ large files) can exceed the cookie lifetime, causing silent 403s that look like successful requests unless status codes are checked.
-**Do this instead:** Check response status on every request. On 401/403, surface a clear error: "Session expired — please re-authenticate." Structure the auth module so re-authentication can be triggered mid-run without restarting the download.
+**What people do:** Call `harvest_session()` (which blocks on Playwright) from inside a worker thread.
 
-### Anti-Pattern 4: Using Microsoft Graph API for Guest Access
+**Why it's wrong:** `harvest_session()` opens a real browser window. Calling it from a thread pool worker means it blocks that worker but also risks Playwright GUI issues on some platforms when called from non-main threads.
 
-**What people do:** Attempt to use the Graph API (`/v1.0/sites/{site}/drives/{drive}/items`) because it is well-documented.
-**Why it's wrong:** Graph API requires an OAuth2 app registration with delegated or application permissions in the target tenant. Guest access via an external sharing link does not grant this. The prior tool failure may have been an attempt to use Graph without proper permissions.
-**Do this instead:** Use the SharePoint REST API (`_api/web/GetFolderByServerRelativeUrl`) with the FedAuth/rtFa cookies from the browser session. This is what the browser itself uses.
+**Do this instead:** In `engine.py`, after `auth_halt` fires, drain all futures (they're already being cancelled), then call `refresh_session_blocking()` from the main thread before re-queuing. The main thread is idle while workers drain — this is the natural place for the refresh.
 
-### Anti-Pattern 5: Silent File Skip on Error
+### Anti-Pattern 3: Writing Config on Every Run
 
-**What people do:** Wrap individual file downloads in a bare `except: pass` or log-and-continue without recording the failure.
-**Why it's wrong:** This is exactly the failure mode of the prior tool. In a forensic context, a silently skipped file is a chain-of-custody failure.
-**Do this instead:** Every failure must be recorded in the job state as `failed` with the error message. The final summary must explicitly list every failed file by name. The tool should exit with a non-zero status code if any file failed.
+**What people do:** Save config to disk every time a download completes, including partial runs and auth failures.
+
+**Why it's wrong:** Saves stale or incomplete settings. If a run fails partway through, the partially-entered destination folder would be persisted as the new default.
+
+**Do this instead:** Only save config when a download completes successfully (no failed files, no auth expiry, no cancellation). One explicit save at the bottom of the success path.
+
+### Anti-Pattern 4: Verify Command That Re-Downloads
+
+**What people do:** Implement `verify` by calling `_download_file()` against SharePoint and comparing the downloaded bytes.
+
+**Why it's wrong:** Requires an active session, re-downloads potentially hundreds of GB, and introduces network as a variable in what should be a local integrity check.
+
+**Do this instead:** Verify is purely local — read bytes from disk, compute SHA-256, compare against manifest.json. No network calls, no session required, no side effects.
+
+### Anti-Pattern 5: Multi-Folder Batch with Shared state.json
+
+**What people do:** Write all folder downloads to a single `state.json` keyed by server_relative_url.
+
+**Why it's wrong:** Server-relative URLs across different folders can overlap in structure and create ambiguity. More critically, the manifest for each folder must be independent — mixing them into one manifest destroys the forensic per-custodian evidence boundary.
+
+**Do this instead:** Each folder in the batch gets its own destination directory (user-specified or derived from folder name). Each has its own `state.json`, `manifest.json`, and `download.log`.
 
 ## Integration Points
 
-### External Services
+### New Module Interfaces
 
-| Service | Integration Pattern | Notes |
-|---------|---------------------|-------|
-| SharePoint REST API (`_api/`) | HTTP GET with FedAuth/rtFa cookies in Cookie header | Supports JSON responses with `Accept: application/json;odata=verbose`; no OAuth token needed for guest sessions |
-| Microsoft Entra B2B auth flow | Playwright browser automation — open URL, await user interaction, extract cookies | NOT programmatic OAuth; user must complete MFA in real browser |
-| Local filesystem | Direct file writes via `open(path, 'wb')` | Create parent directories before writing; use temp file + rename for atomicity |
+| Module | Exported Interface | Called By |
+|--------|-------------------|-----------|
+| `auth/refresh.py` | `refresh_session_blocking(session, sharing_url) -> None` | `engine.py` (after auth halt drains) |
+| `downloader/throttle.py` | `TokenBucket(rate_bps: float)` with `consume(n: int) -> None` | `engine.py` `on_chunk` closure |
+| `manifest/verifier.py` | `verify_manifest(dest_dir: Path) -> tuple[list[str], list[str]]` | `cli/main.py` `verify` command |
+| `cli/config.py` | `load_config() -> Config`, `save_config(config: Config) -> None` | `cli/main.py` at startup and on success |
 
-### Internal Boundaries
+### Modifications to Existing Interfaces
+
+| Location | Change | Impact |
+|----------|--------|--------|
+| `engine.py::download_all()` | Add `throttle: TokenBucket | None = None` parameter | Callers in `cli/main.py` pass throttle if configured |
+| `engine.py::download_all()` | Add `sharing_url: str | None = None` for refresh | Callers must pass URL |
+| `engine.py::_make_progress()` | Replace `TimeElapsedColumn` with `TimeRemainingColumn` | No interface change — internal only |
+| `cli/main.py::download()` | Make `root_folder` optional (`default=None`) | Existing callers unaffected (None triggers auto-detect) |
+| `cli/main.py::list_files()` | Make `root_folder` optional (`default=None`) | Same as above |
+
+### Internal Boundaries (v1.1)
 
 | Boundary | Communication | Notes |
 |----------|---------------|-------|
-| CLI ↔ Auth Module | Function call; returns `requests.Session` | CLI does not know auth implementation details |
-| Auth ↔ HTTP Client | Cookie injection into `requests.Session` | Session is the only thing that crosses this boundary |
-| CLI ↔ Enumerator | Function call; returns `List[FileEntry]` | Enumerator is synchronous; pagination is internal |
-| CLI ↔ Download Engine | Function call with file list; returns `DownloadResult` summary | Engine manages its own thread pool |
-| Download Engine ↔ State | Read on startup; write after each file; both are filesystem operations | Use file locking or sequential writes to avoid corruption |
-| Download Engine ↔ Manifest Writer | Write after each successful download | Manifest append must be thread-safe if using concurrent engine |
-| Download Engine ↔ Auth Module | Signal only: "session expired, re-auth needed" | Auth module must be callable mid-run |
+| `cli/main.py` ↔ `cli/config.py` | Function call; returns Config dataclass | Config is read-only for all callers except the save-on-success path |
+| `engine.py` ↔ `auth/refresh.py` | Function call from main thread after workers drain | Refresh must not be called from worker thread |
+| `engine.py` ↔ `downloader/throttle.py` | `throttle.consume(n)` inside `on_chunk` closure | Throttle is optional — `None` check before calling |
+| `cli/main.py` ↔ `manifest/verifier.py` | Function call; returns `(ok, mismatch)` lists | Verifier has no dependency on session or state |
 
-## Build Order Implications
+## Build Order
 
-The dependency graph drives phase order:
+Dependencies drive order. Each step can be built and tested independently before the next.
 
-1. **Auth module first** — everything else depends on an authenticated session. This is also the highest-risk component (auth flow is uncertain until tested against a real SharePoint external share). Validate it in isolation before building on top of it.
-2. **HTTP Client Layer + Enumerator second** — once auth works, prove that the REST API is accessible by listing a folder. This validates the session is accepted by the API.
-3. **Download Engine third** — after enumeration is proven, build the download loop with streaming and hashing. Start single-threaded, add concurrency once basic flow works.
-4. **State + Resume fourth** — add job state persistence once a single download works end-to-end. This is a reliability layer, not a core capability.
-5. **Manifest Writer fifth** — the forensic deliverable. Built last because it depends on a correct, complete download having happened.
-6. **CLI / Orchestrator last** — wires all components together. Kept thin intentionally; logic lives in modules, not in main.
+### Phase 1: Zero-Risk Wins (no dependency on other new features)
+
+1. **ETA display** — single-line change to `_make_progress()` in `engine.py`. No new modules, no interface changes. Test: visual inspection of progress bar.
+2. **Log file** — add `FileHandler` setup in `cli/main.py` before `download_all()`. Add `logger.*` calls at key points. No new modules needed. Test: verify `download.log` exists after a run.
+3. **Auto-detect root folder in CLI** — make `root_folder` optional in `list` and `download` commands; call existing `_resolve_sharing_link()`. No new modules. Test: run `spdl download <url> <dest>` without `-r`.
+4. **PyPI publish** — `pyproject.toml` changes only. No runtime impact. Verify `spdl` is available after `pip install`.
+
+### Phase 2: New Modules, Contained Scope
+
+5. **Config file** — build `cli/config.py`, wire into `_interactive_mode_inner()`. Test: saved URL pre-fills on second run.
+6. **Bandwidth throttle** — build `downloader/throttle.py`, add parameter to `download_all()`. Test: `--throttle 5MB/s` caps observed speed.
+7. **Verify command** — build `manifest/verifier.py`, add `verify` command to `cli/main.py`. Test: verify passes on intact download, reports mismatch on a corrupted file.
+
+### Phase 3: Higher Complexity, Cross-Module Changes
+
+8. **Multi-folder batch** — wrap the TUI download loop in `cli/main.py`; no engine changes. Test: queue 2 folders, each gets independent manifest.
+9. **Session refresh** — build `auth/refresh.py`, modify `engine.py` auth-halt path. Test: simulate 401 mid-download, verify re-auth triggers and download resumes.
+
+**Rationale for this order:**
+- Phases 1-2 are deliverable independently, with no risk to the existing download path.
+- Phase 3 items touch the core auth-halt flow (session refresh) and the TUI interaction loop (batch) — higher risk, built last.
+- ETA is phase 1 not because it is important but because it is trivial; getting it done early removes it from the risk column.
+- Session refresh is last because it requires testing against a real SharePoint session expiry, which is hard to automate and needs real-world validation.
 
 ## Sources
 
-- SharePoint REST API file/folder operations: https://learn.microsoft.com/en-us/sharepoint/dev/sp-add-ins/working-with-folders-and-files-with-rest
-- SharePoint OTP retirement (July 2025 → Entra B2B): https://steve-chen.blog/2025/06/23/sharepoint-online-otp-authentication-gets-out-of-support-on-july-1st-2025/
-- OTP retirement timeline and Entra B2B transition detail: https://office365itpros.com/2025/06/10/entra-id-b2b-collaboration-spo/
-- Current guest account state (March 2026): https://office365itpros.com/2026/03/06/guest-accounts-spo/
-- FedAuth/rtFa cookie mechanics: https://learn.microsoft.com/en-us/sharepoint/authentication
-- SharePoint REST API pagination / list view threshold: https://learn.microsoft.com/en-us/answers/questions/2149751/unable-to-retrieve-files-from-sharepoint-library-u
-- Playwright session/cookie management: https://playwright.dev/python/docs/auth
-- Python concurrent download patterns: https://abhay.fyi/blog/concurrent-downloads-with-python-using-asyncio-or-thread-pools/
+- Direct inspection of `sharepoint_dl/downloader/engine.py` (v1.0 codebase)
+- Direct inspection of `sharepoint_dl/cli/main.py` (v1.0 codebase)
+- Direct inspection of `sharepoint_dl/auth/session.py`, `sharepoint_dl/state/job_state.py`, `sharepoint_dl/manifest/writer.py`
+- Rich Progress documentation: `TimeRemainingColumn` is a built-in column — https://rich.readthedocs.io/en/stable/progress.html
+- Python `logging.FileHandler`: standard library — https://docs.python.org/3/library/logging.handlers.html#logging.FileHandler
+- Token bucket algorithm: standard rate-limiting pattern — implementation via `time.monotonic()` and `time.sleep()`
 
 ---
-*Architecture research for: SharePoint bulk file downloader (forensic evidence collection)*
-*Researched: 2026-03-27*
+*Architecture research for: SharePoint bulk downloader v1.1 feature integration*
+*Researched: 2026-03-30*
