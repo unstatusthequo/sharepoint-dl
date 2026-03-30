@@ -481,3 +481,59 @@ class TestResumeSkip:
         assert json.loads((tmp_path / "state.json").read_text())[entry.server_relative_url][
             "local_path"
         ] == entry.name
+
+
+class TestReauthIntegration:
+    """Tests for on_auth_expired callback wired into download_all()."""
+
+    def test_on_auth_expired_none_raises(self, tmp_path: Path):
+        """Default behavior: when on_auth_expired is None, AuthExpiredError propagates."""
+        entries = _make_test_entries(3)
+        session = _mock_session_for_download(entries, auth_fail_index=0)
+        site_url = "https://contoso.sharepoint.com/sites/shared"
+
+        with pytest.raises(AuthExpiredError):
+            download_all(session, entries, tmp_path, site_url, workers=1, on_auth_expired=None)
+
+    def test_on_auth_expired_true_resumes(self, tmp_path: Path):
+        """When on_auth_expired returns True, auth_halt is cleared and download resumes.
+
+        The 401 file stays FAILED; other files continue. No AuthExpiredError raised.
+        """
+        entries = _make_test_entries(3)
+        # First request returns 401, rest succeed
+        session = _mock_session_for_download(entries, auth_fail_index=0)
+        site_url = "https://contoso.sharepoint.com/sites/shared"
+
+        callback_calls = []
+
+        def on_auth_expired() -> bool:
+            callback_calls.append(True)
+            return True
+
+        # Should NOT raise — callback returns True so auth_halt is cleared
+        completed, failed = download_all(
+            session, entries, tmp_path, site_url, workers=1,
+            on_auth_expired=on_auth_expired,
+        )
+
+        # Callback was invoked at least once
+        assert len(callback_calls) >= 1
+        # The 401 file stays FAILED, other files succeed
+        assert len(failed) >= 1
+        assert any(reason == "auth_expired" for _url, reason in failed)
+
+    def test_on_auth_expired_false_aborts(self, tmp_path: Path):
+        """When on_auth_expired returns False, AuthExpiredError is raised (abort)."""
+        entries = _make_test_entries(3)
+        session = _mock_session_for_download(entries, auth_fail_index=0)
+        site_url = "https://contoso.sharepoint.com/sites/shared"
+
+        def on_auth_expired() -> bool:
+            return False
+
+        with pytest.raises(AuthExpiredError):
+            download_all(
+                session, entries, tmp_path, site_url, workers=1,
+                on_auth_expired=on_auth_expired,
+            )
