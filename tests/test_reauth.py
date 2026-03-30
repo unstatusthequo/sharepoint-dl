@@ -381,14 +381,21 @@ class TestReauthController:
 
         ctrl, _, _ = _make_controller()
 
-        with patch(
-            "sharepoint_dl.auth.reauth.build_session",
-            return_value=_make_session(),
-        ), patch(
-            "sharepoint_dl.auth.reauth._session_file",
-            return_value=mock_session_path,
-        ), caplog.at_level(logging.INFO, logger="sharepoint_dl.auth.reauth"):
-            ctrl.trigger()
+        # Ensure the sharepoint_dl logger propagates to root so caplog captures it
+        sp_logger = logging.getLogger("sharepoint_dl")
+        original_propagate = sp_logger.propagate
+        sp_logger.propagate = True
+        try:
+            with patch(
+                "sharepoint_dl.auth.reauth.build_session",
+                return_value=_make_session(),
+            ), patch(
+                "sharepoint_dl.auth.reauth._session_file",
+                return_value=mock_session_path,
+            ), caplog.at_level(logging.INFO, logger="sharepoint_dl.auth.reauth"):
+                ctrl.trigger()
+        finally:
+            sp_logger.propagate = original_propagate
 
         assert any("succeeded" in r.message for r in caplog.records)
         assert any("1" in r.message for r in caplog.records)  # attempt number
@@ -402,8 +409,15 @@ class TestReauthController:
 
         ctrl, _, _ = _make_controller(on_reauth=bad_reauth)
 
-        with caplog.at_level(logging.ERROR, logger="sharepoint_dl.auth.reauth"):
-            ctrl.trigger()
+        # Ensure the sharepoint_dl logger propagates to root so caplog captures it
+        sp_logger = logging.getLogger("sharepoint_dl")
+        original_propagate = sp_logger.propagate
+        sp_logger.propagate = True
+        try:
+            with caplog.at_level(logging.ERROR, logger="sharepoint_dl.auth.reauth"):
+                ctrl.trigger()
+        finally:
+            sp_logger.propagate = original_propagate
 
         assert any("failed" in r.message for r in caplog.records)
         assert any("1" in r.message for r in caplog.records)
