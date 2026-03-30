@@ -149,7 +149,11 @@ Plans:
   2. Explicit CLI arguments always override config file values; the config file is never mandatory
   3. Running `spdl verify <dest_dir>` re-reads every file from disk, recomputes its SHA-256, and reports any hash mismatches or missing files against `manifest.json`
   4. Running `spdl download --throttle 2MB` limits aggregate bandwidth across all workers to approximately 2 MB/s without causing `ChunkedEncodingError`
-**Plans**: TBD
+**Plans**: 2 plans
+
+Plans:
+- [ ] 08-01-PLAN.md — Config file module (TOML load/save/merge) + token bucket throttle module
+- [ ] 08-02-PLAN.md — Verify command + CLI/engine wiring for config, throttle, and verify
 
 ### Phase 9: Batch and Session Resilience
 **Goal**: Users can queue multiple custodian folders in one session without restarting, and unattended multi-hour runs survive session expiry automatically
@@ -175,6 +179,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 4. Resume Safety and Failure Reporting | v1.0 | 2/2 | Complete | 2026-03-27 |
 | 5. Manifest Path Accuracy | v1.0 | 1/1 | Complete | 2026-03-27 |
 | 6. Audit Evidence Normalization | v1.0 | 1/1 | Complete | 2026-03-27 |
-| 7. Zero-Risk UX Wins | v1.1 | 0/2 | Complete    | 2026-03-30 |
-| 8. New Contained Modules | v1.1 | 0/TBD | Not started | - |
+| 7. Zero-Risk UX Wins | v1.1 | 2/2 | Complete | 2026-03-30 |
+| 8. New Contained Modules | v1.1 | 0/2 | Not started | - |
 | 9. Batch and Session Resilience | v1.1 | 0/TBD | Not started | - |
