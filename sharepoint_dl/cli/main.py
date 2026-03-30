@@ -14,6 +14,7 @@ from rich.prompt import Prompt, IntPrompt, Confirm
 from rich.table import Table
 
 from sharepoint_dl.auth.browser import harvest_session
+from sharepoint_dl.auth.reauth import ReauthController
 from sharepoint_dl.cli.resolve import resolve_folder_from_browser_url, resolve_sharing_link
 from sharepoint_dl.auth.session import load_session, validate_session
 from sharepoint_dl.config import load_config, save_config
@@ -291,11 +292,17 @@ def _interactive_mode_inner() -> None:
 
     cancelled = False
     try:
+        def _do_reauth(url: str) -> None:
+            console.print("  [bright_yellow]Session expired -- re-authenticating...[/bright_yellow]")
+            harvest_session(url)
+
+        reauth = ReauthController(session, site_url, on_reauth=_do_reauth)
         progress = _make_progress()
         with progress:
             completed, failed = download_all(
                 session, files, dest, site_url,
                 workers=workers, progress=progress, flat=True,
+                on_auth_expired=reauth.trigger,
             )
     except AuthExpiredError:
         auth_expired = True
@@ -829,6 +836,11 @@ def download(
     failed: list[tuple[str, str]] = []
     state: JobState | None = None
     try:
+        def _do_reauth(url: str) -> None:
+            console.print("  [bright_yellow]Session expired -- re-authenticating...[/bright_yellow]")
+            harvest_session(url)
+
+        reauth = ReauthController(session, site_url, on_reauth=_do_reauth)
         progress = _make_progress()
         with progress:
             completed, failed = download_all(
@@ -840,6 +852,7 @@ def download(
                 progress=progress,
                 flat=flat,
                 throttle=throttle_bucket,
+                on_auth_expired=reauth.trigger,
             )
     except AuthExpiredError:
         auth_expired = True
