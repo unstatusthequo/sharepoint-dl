@@ -71,13 +71,16 @@ class TestTokenBucket:
         assert elapsed >= 0.4, f"Expected sleep >= 0.4s, got {elapsed:.3f}s"
 
     def test_thread_safety(self):
-        """Multiple threads consuming should stay within ~2x target rate."""
+        """Multiple threads consuming should stay within ~2x target rate after burst."""
         rate = 100_000  # 100 KB/s
         bucket = TokenBucket(rate_bytes_per_sec=rate)
         chunk_size = 10_000
+
+        # Drain the initial burst so we measure steady-state only
+        bucket.consume(rate)
+
         total_consumed = 0
         lock = threading.Lock()
-
         duration = 0.5  # run for 0.5 seconds
 
         def worker():
@@ -96,7 +99,7 @@ class TestTokenBucket:
             t.join()
         actual_elapsed = time.monotonic() - start
 
-        # Effective rate should be within 2x of target
+        # Effective rate should be within 2x of target (steady-state)
         effective_rate = total_consumed / actual_elapsed
         assert effective_rate <= rate * 2.5, (
             f"Effective rate {effective_rate:.0f} B/s exceeds 2.5x target {rate} B/s"
