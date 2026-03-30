@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Feature Expansion
 status: executing
-stopped_at: Completed 07-02-PLAN.md
-last_updated: "2026-03-30T21:00:18.860Z"
+stopped_at: Completed 08-02-PLAN.md
+last_updated: "2026-03-30T22:03:33Z"
 last_activity: 2026-03-30
 progress:
   total_phases: 3
   completed_phases: 1
-  total_plans: 2
-  completed_plans: 2
+  total_plans: 4
+  completed_plans: 4
 ---
 
 # Project State
@@ -25,11 +25,11 @@ See: .planning/PROJECT.md (updated 2026-03-30)
 ## Current Position
 
 Phase: 8 of 9 (new contained modules)
-Plan: Not started
-Status: Ready to execute
+Plan: 2 of 2 (complete)
+Status: Phase 8 complete
 Last activity: 2026-03-30
 
-Progress (v1.1): [█████░░░░░] 17%
+Progress (v1.1): [████████░░] 50%
 
 ## Performance Metrics
 
@@ -51,13 +51,16 @@ Progress (v1.1): [█████░░░░░] 17%
 | 06-audit-normalization | 1/1 | 10min | 10min |
 
 | 07-zero-risk-ux-wins | 1/2 | ~4min | ~4min |
+| 08-new-contained-modules | 2/2 | ~30min | ~15min |
 
 **Recent Trend:**
 
-- Last 5 plans: 07-01 (4min)
-- Trend: Starting v1.1 execution
+- Last 5 plans: 07-01 (4min), 07-02 (3min), 08-01 (12min), 08-02 (18min)
+- Trend: Phase 8 complete, v1.1 CLI feature set done
 
 | Phase 07 P02 | 3min | 1 tasks | 3 files |
+| Phase 08 P01 | 12min | 2 tasks | 5 files |
+| Phase 08 P02 | 18min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -72,6 +75,10 @@ Recent decisions affecting v1.1 work:
 - [v1.1 research]: Session refresh must run on main thread — Playwright GUI constraint; use check-lock-check pattern for concurrent 401 detection
 - [v1.1 research]: Each batch job needs its own subdirectory, state.json, manifest.json, and log file — shared state.json causes collision
 - [Phase 07]: Extracted resolve functions to sharepoint_dl/cli/resolve.py for reuse across CLI commands
+- [Phase 08]: verify command exits 1 on any FAIL or MISSING result — gives forensic users clear signal
+- [Phase 08]: Extra files on disk not in manifest are IGNORED — verifier only checks promised files
+- [Phase 08]: Config save wrapped in try/except — download never fails due to config I/O error
+- [Phase 08]: Throttle not prompted in interactive mode — CLI-only flag for scripting use
 
 ### Pending Todos
 
@@ -84,6 +91,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-30T20:56:20.487Z
-Stopped at: Completed 07-02-PLAN.md
+Last session: 2026-03-30T22:03:33Z
+Stopped at: Completed 08-02-PLAN.md
 Resume file: None

@@ -85,18 +85,18 @@ Deferred to future release. Tracked but not in current roadmap.
 
 - [x] **UX-01**: Tool auto-detects the shared folder path from the sharing link URL (no manual `-r` flag needed)
 - [ ] **UX-02**: User can queue multiple folders for download in a single interactive session
-- [ ] **UX-03**: Tool saves default settings (SharePoint URL, destination, workers) to a config file and loads them on startup
+- [x] **UX-03**: Tool saves default settings (SharePoint URL, destination, workers) to a config file and loads them on startup
 - [x] **UX-04**: Progress display shows estimated time remaining and current download speed
 
 ### Reliability
 
 - [ ] **REL-01**: Tool automatically re-authenticates mid-download when session expires (no manual re-run)
-- [ ] **REL-02**: User can limit download bandwidth via `--throttle` flag
+- [x] **REL-02**: User can limit download bandwidth via `--throttle` flag
 - [x] **REL-03**: Tool writes a timestamped log file (`download.log`) with all events for audit trail
 
 ### Forensics
 
-- [ ] **FOR-01**: User can run a `verify` command that re-reads files from disk, recomputes SHA-256, and compares against manifest.json
+- [x] **FOR-01**: User can run a `verify` command that re-reads files from disk, recomputes SHA-256, and compares against manifest.json
 
 ## v1.1 Deferred
 
@@ -142,9 +142,9 @@ Deferred to future release. Tracked but not in current roadmap.
 | UX-01 | Phase 7 | Complete |
 | UX-04 | Phase 7 | Complete |
 | REL-03 | Phase 7 | Complete |
-| UX-03 | Phase 8 | Pending |
-| REL-02 | Phase 8 | Pending |
-| FOR-01 | Phase 8 | Pending |
+| UX-03 | Phase 8 | Complete |
+| REL-02 | Phase 8 | Complete |
+| FOR-01 | Phase 8 | Complete |
 | UX-02 | Phase 9 | Pending |
 | REL-01 | Phase 9 | Pending |
 
