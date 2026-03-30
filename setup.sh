@@ -33,8 +33,4 @@ echo
 echo "=== Setup Complete ==="
 echo
 echo "To use:"
-echo "  uv run sharepoint-dl"
-echo
-echo "Or activate the venv:"
-echo "  source .venv/bin/activate"
-echo "  sharepoint-dl"
+echo "  ./run.sh"
