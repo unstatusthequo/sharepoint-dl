@@ -203,4 +203,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 7. Zero-Risk UX Wins | v1.1 | 2/2 | Complete | 2026-03-30 |
 | 8. New Contained Modules | v1.1 | 1/2 | In Progress|  |
 | 9. Batch and Session Resilience | v1.1 | 3/3 | Complete   | 2026-03-30 |
-| 10. TUI Polish | v1.1 | 2/2 | Complete   | 2026-03-31 |
+| 10. TUI Polish | v1.1 | 2/2 | Complete    | 2026-03-31 |
