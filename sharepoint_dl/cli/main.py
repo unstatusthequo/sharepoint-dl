@@ -480,8 +480,8 @@ def _interactive_mode_inner() -> None:
                 "workers": workers,
                 "flat": True,
             })
-        except Exception:
-            pass  # Config save is best-effort
+        except Exception as exc:
+            console.print(f"  [dim]Config save failed: {exc}[/dim]")
 
     if any_auth_expired:
         raise typer.Exit(code=1)
