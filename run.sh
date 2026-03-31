@@ -16,7 +16,18 @@ if [ ! -d "$DIR/.venv" ]; then
     echo "Setting up environment..."
     uv lock 2>/dev/null
     uv sync
-    uv run playwright install chromium
+    "$DIR/.venv/bin/python3" -m playwright install chromium
+fi
+
+# Playwright health check — driver can break when Node.js upgrades
+if ! "$DIR/.venv/bin/python3" -c "
+from playwright.sync_api import sync_playwright
+with sync_playwright() as pw:
+    pass
+" 2>/dev/null; then
+    echo "Repairing Playwright (driver mismatch)..."
+    uv pip install --force-reinstall playwright 2>/dev/null
+    "$DIR/.venv/bin/python3" -m playwright install chromium 2>/dev/null
 fi
 
 # Run via python -m (bypasses broken entrypoint scripts)
