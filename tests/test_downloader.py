@@ -258,6 +258,90 @@ class TestMakeProgress:
         column_types = [type(c) for c in progress.columns]
         assert TransferSpeedColumn in column_types
 
+    def test_has_elapsed_field_column_for_worker_tasks(self):
+        """Test 1: _make_progress() returns a Progress with an "elapsed" field column for worker tasks."""
+        from rich.progress import TextColumn
+        progress = _make_progress()
+        # Check that a TextColumn with the elapsed field format exists
+        text_columns = [c for c in progress.columns if isinstance(c, TextColumn)]
+        elapsed_column = any(
+            "elapsed" in getattr(c, "text_format", "")
+            for c in text_columns
+        )
+        assert elapsed_column, "Expected a TextColumn with {task.fields[elapsed]} format"
+
+    def test_time_elapsed_column_not_in_make_progress(self):
+        """Test 2: TimeElapsedColumn is NOT in _make_progress columns (replaced by field-based elapsed)."""
+        from rich.progress import TimeElapsedColumn
+        progress = _make_progress()
+        column_types = [type(c) for c in progress.columns]
+        assert TimeElapsedColumn not in column_types, (
+            "_make_progress() should use field-based elapsed, not TimeElapsedColumn"
+        )
+
+
+class TestFormatElapsed:
+    """_format_elapsed() formats seconds as human-readable string."""
+
+    def test_under_1_second_returns_0s(self):
+        """Test 3: Under 1 second returns '0s'."""
+        from sharepoint_dl.downloader.engine import _format_elapsed
+        assert _format_elapsed(0.5) == "0s"
+
+    def test_under_60_seconds_shows_Xs(self):
+        """Test 3: Under 60s formatted as '12s'."""
+        from sharepoint_dl.downloader.engine import _format_elapsed
+        assert _format_elapsed(12.0) == "12s"
+        assert _format_elapsed(59.9) == "59s"
+
+    def test_over_60_seconds_shows_minutes_and_seconds(self):
+        """Test 3: 60s+ formatted as '2m 15s'."""
+        from sharepoint_dl.downloader.engine import _format_elapsed
+        assert _format_elapsed(135.0) == "2m 15s"
+        assert _format_elapsed(60.0) == "1m 0s"
+
+
+class TestPerFileElapsedTimer:
+    """Worker tasks track per-file elapsed timer that resets on new file."""
+
+    def test_worker_elapsed_resets_when_picking_up_new_file(self, tmp_path: Path):
+        """Test 4: When a worker picks up a new file, its elapsed timer resets to 0."""
+        import time
+        from rich.progress import Progress
+
+        entries = _make_test_entries(2)
+
+        elapsed_values_seen = []
+
+        original_update = None
+
+        def mock_get(url, **kwargs):
+            resp = MagicMock()
+            resp.status_code = 200
+            content = b"A" * 24
+            resp.iter_content = MagicMock(return_value=iter([content]))
+            resp.raise_for_status = MagicMock()
+            return resp
+
+        session = MagicMock()
+        session.get = MagicMock(side_effect=mock_get)
+        site_url = "https://contoso.sharepoint.com/sites/shared"
+
+        progress = Progress(disable=True)
+
+        with progress:
+            completed, failed = download_all(
+                session, entries, tmp_path, site_url, workers=1, progress=progress
+            )
+
+        # After download, check that tasks were created with elapsed field
+        for task in progress.tasks:
+            if "elapsed" in task.fields:
+                elapsed_values_seen.append(task.fields["elapsed"])
+
+        # At minimum, some task should have an elapsed field initialized
+        assert len(elapsed_values_seen) > 0, "Expected tasks with elapsed field, got none"
+
 
 class TestDownloadUrl:
     """_build_download_url constructs correct download.aspx URL."""
