@@ -77,11 +77,16 @@ def _interactive_mode() -> None:
     """Interactive TUI that guides the user through auth, folder selection, and download."""
     import os
 
+    exit_code = 0
     try:
         _interactive_mode_inner()
     except KeyboardInterrupt:
         console.print("\n\n[yellow]Cancelled.[/yellow]")
-        raise typer.Exit(code=0)
+    except SystemExit as e:
+        exit_code = e.code if isinstance(e.code, int) else 1
+    finally:
+        # Force-exit to avoid long hangs from ThreadPoolExecutor atexit handlers
+        os._exit(exit_code)
 
 
 def _print_banner() -> None:
