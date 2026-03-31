@@ -87,6 +87,14 @@ def verify_manifest(
         # Resolve local path relative to dest_dir
         file_path = dest_dir / local_path_rel
 
+        # Fallback: handle legacy manifests with double-prefixed paths (e.g. files/files/name)
+        if not file_path.exists() and "/" in local_path_rel:
+            # Try stripping the first path component
+            stripped = local_path_rel.split("/", 1)[1]
+            candidate = dest_dir / stripped
+            if candidate.exists():
+                file_path = candidate
+
         if not file_path.exists():
             results.append(
                 VerifyResult(
