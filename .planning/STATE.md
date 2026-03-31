@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Feature Expansion
-status: executing
-stopped_at: Completed 10-02-PLAN.md
-last_updated: "2026-03-31T22:42:58.765Z"
+status: verifying
+stopped_at: Completed 10-01-PLAN.md
+last_updated: "2026-03-31T22:43:27.024Z"
 last_activity: 2026-03-31
 progress:
   total_phases: 4
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 9
-  completed_plans: 8
+  completed_plans: 9
 ---
 
 # Project State
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-03-30)
 
 Phase: 10 (tui-polish) — EXECUTING
 Plan: 2 of 2
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-03-31
 
 Progress (v1.1): [████████░░] 50%
@@ -65,6 +65,7 @@ Progress (v1.1): [████████░░] 50%
 | Phase 09 P02 | 2.5min | 2 tasks | 3 files |
 | Phase 09-batch-and-session-resilience P03 | 10min | 1 tasks | 2 files |
 | Phase 10-tui-polish P02 | 15min | 2 tasks | 3 files |
+| Phase 10-tui-polish P01 | 3.5min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -91,6 +92,8 @@ Recent decisions affecting v1.1 work:
 - [Phase 09]: Session object reused across all batch jobs per D-10 — no re-authentication between jobs
 - [Phase 10-tui-polish]: Store throttle as raw human string in config not parsed bytes — users see original input on reload
 - [Phase 10-tui-polish]: TUI startup menu shows Download/Verify options before sharing URL prompt; verify flow branches early and returns
+- [Phase 10-tui-polish]: Used csv.DictWriter with extrasaction=ignore for clean field mapping in manifest CSV export
+- [Phase 10-tui-polish]: Field-based elapsed TextColumn replaces TimeElapsedColumn to allow per-file timer reset in Rich progress
 
 ### Pending Todos
 
@@ -103,6 +106,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-31T22:42:58.763Z
-Stopped at: Completed 10-02-PLAN.md
+Last session: 2026-03-31T22:43:27.021Z
+Stopped at: Completed 10-01-PLAN.md
 Resume file: None
