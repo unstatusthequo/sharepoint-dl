@@ -119,6 +119,46 @@ def _error(text: str) -> None:
     console.print(f"    [bright_red]{text}[/bright_red]")
 
 
+def _run_verify(dest_dir: Path) -> None:
+    """Run manifest verification for a download folder and print results."""
+    from rich.progress import BarColumn, DownloadColumn, Progress, SpinnerColumn, TextColumn
+    import json as _json
+
+    manifest_path_local = dest_dir / "manifest.json"
+    if not manifest_path_local.exists():
+        _warn("No manifest.json found — skipping verification.")
+        return
+
+    manifest_data = _json.loads(manifest_path_local.read_text(encoding="utf-8"))
+    total_bytes = sum(
+        f.get("size_bytes", 0) for f in manifest_data.get("files", [])
+    )
+
+    with Progress(
+        SpinnerColumn(style="bright_magenta"),
+        TextColumn("[bright_cyan]{task.description}[/bright_cyan]"),
+        BarColumn(bar_width=None, complete_style="bright_magenta", finished_style="bright_green"),
+        DownloadColumn(binary_units=True),
+        console=console,
+    ) as vp:
+        task_id = vp.add_task("Verifying files", total=total_bytes)
+
+        def on_progress(name: str, size_bytes: int) -> None:
+            vp.update(task_id, advance=size_bytes)
+
+        summary = verify_manifest(dest_dir, on_progress=on_progress)
+
+    if summary.failed == 0 and summary.missing == 0:
+        _success(f"{summary.passed}/{summary.total} files verified OK")
+    else:
+        parts = []
+        if summary.failed > 0:
+            parts.append(f"{summary.failed} FAIL")
+        if summary.missing > 0:
+            parts.append(f"{summary.missing} MISSING")
+        _error(f"Verification issues: {', '.join(parts)}")
+
+
 def _interactive_mode_inner() -> None:
     """Inner interactive flow — separated so KeyboardInterrupt is caught cleanly."""
     import os
@@ -128,6 +168,38 @@ def _interactive_mode_inner() -> None:
 
     os.system("cls" if os.name == "nt" else "clear")
     _print_banner()
+
+    # Startup menu: Download or Verify
+    console.print("    [bright_magenta]1.[/bright_magenta] [bold]Download files[/bold]")
+    console.print("    [bright_magenta]2.[/bright_magenta] [bold]Verify a prior download[/bold]")
+    console.print()
+    menu_choice = Prompt.ask(
+        "  [bright_magenta]>[/bright_magenta] [bold]Choose an option[/bold]",
+        default="1",
+    ).strip()
+
+    if menu_choice == "2":
+        # Verify flow
+        _section_header("01", "VERIFY DOWNLOAD")
+        default_verify_path = cfg["download_dest"] or str(Path.home() / "Downloads" / "sharepoint-dl")
+        verify_path = Prompt.ask(
+            "    [bold]Path to download folder[/bold]",
+            default=default_verify_path,
+        ).strip()
+        verify_dir = Path(verify_path)
+        if not verify_dir.exists():
+            _error(f"Path does not exist: {verify_path}")
+            raise typer.Exit(code=1)
+        if not (verify_dir / "manifest.json").exists():
+            _error(f"No manifest.json found in: {verify_path}")
+            raise typer.Exit(code=1)
+        _section_header("02", "VERIFICATION")
+        try:
+            _run_verify(verify_dir)
+        except Exception as exc:
+            _warn(f"Verification error: {exc}")
+        return
+
     console.print()
 
     # Step 1: Get sharing URL
@@ -184,6 +256,31 @@ def _interactive_mode_inner() -> None:
         default=cfg["workers"],
     )
     workers = max(1, min(8, workers))
+
+    # Throttle prompt
+    throttle_default = cfg.get("throttle", "") or ""
+    throttle_input = ""
+    throttle_bucket = None
+    while True:
+        raw = Prompt.ask(
+            "    [bold]Bandwidth limit?[/bold] (e.g. 5MB, Enter to skip)",
+            default=throttle_default or "skip",
+        ).strip()
+        if raw == "skip" or raw == "":
+            throttle_input = ""
+            throttle_bucket = None
+            break
+        try:
+            rate = parse_throttle(raw)
+            if rate is not None:
+                throttle_bucket = TokenBucket(rate)
+                throttle_input = raw
+            else:
+                throttle_input = ""
+                throttle_bucket = None
+            break
+        except ValueError as exc:
+            _error(f"Invalid throttle value: {exc}")
 
     # Batch loop — each iteration downloads one folder
     batch_results: list[dict] = []
@@ -324,6 +421,7 @@ def _interactive_mode_inner() -> None:
                     workers=workers, progress=progress, flat=True,
                     on_auth_expired=reauth.trigger,
                     files_dir=job_files_dir,
+                    throttle=throttle_bucket,
                 )
         except AuthExpiredError:
             auth_expired = True
@@ -484,6 +582,7 @@ def _interactive_mode_inner() -> None:
                 "download_dest": str(batch_root),
                 "workers": workers,
                 "flat": True,
+                "throttle": throttle_input,
             })
         except Exception as exc:
             console.print(f"  [dim]Config save failed: {exc}[/dim]")
@@ -506,41 +605,7 @@ def _interactive_mode_inner() -> None:
     if ok_results and not any_failed and not any_auth_expired and Confirm.ask("  [bold]Verify downloaded files?[/bold]", default=False):
         _section_header("06", "VERIFICATION")
         try:
-            from rich.progress import BarColumn, DownloadColumn, Progress, SpinnerColumn, TextColumn
-            import json as _json
-
-            manifest_path_local = batch_root / "manifest.json"
-            if not manifest_path_local.exists():
-                _warn("No manifest.json found — skipping verification.")
-            else:
-                manifest_data = _json.loads(manifest_path_local.read_text(encoding="utf-8"))
-                total_bytes = sum(
-                    f.get("size_bytes", 0) for f in manifest_data.get("files", [])
-                )
-
-                with Progress(
-                    SpinnerColumn(style="bright_magenta"),
-                    TextColumn("[bright_cyan]{task.description}[/bright_cyan]"),
-                    BarColumn(bar_width=None, complete_style="bright_magenta", finished_style="bright_green"),
-                    DownloadColumn(binary_units=True),
-                    console=console,
-                ) as vp:
-                    task_id = vp.add_task("Verifying files", total=total_bytes)
-
-                    def on_progress(name: str, size_bytes: int) -> None:
-                        vp.update(task_id, advance=size_bytes)
-
-                    summary = verify_manifest(batch_root, on_progress=on_progress)
-
-                if summary.failed == 0 and summary.missing == 0:
-                    _success(f"{summary.passed}/{summary.total} files verified OK")
-                else:
-                    parts = []
-                    if summary.failed > 0:
-                        parts.append(f"{summary.failed} FAIL")
-                    if summary.missing > 0:
-                        parts.append(f"{summary.missing} MISSING")
-                    _error(f"Verification issues: {', '.join(parts)}")
+            _run_verify(batch_root)
         except Exception as exc:
             _warn(f"Verification error: {exc}")
 
