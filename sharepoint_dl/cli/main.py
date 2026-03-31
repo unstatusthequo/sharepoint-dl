@@ -470,33 +470,40 @@ def _interactive_mode_inner() -> None:
     if any_failed:
         raise typer.Exit(code=1)
 
-    # Save config after successful batch
-    try:
-        save_config({
-            "sharepoint_url": sharing_url,
-            "download_dest": str(batch_root),
-            "workers": workers,
-            "flat": True,
-        })
-    except Exception:
-        pass  # Config save is best-effort
+    # Determine if any jobs actually downloaded files
+    ok_results = [r for r in batch_results if r["status"] == "OK"]
+    total_downloaded = sum(r["files"] for r in batch_results)
 
-    avg_speed = total_size / elapsed if elapsed > 0 else 0
-    console.print(
-        f"\n  [bold bright_green]Done![/bold bright_green] {len(completed)} files "
-        f"({_format_size(total_size)}) in {elapsed:.1f}s "
-        f"({_format_size(int(avg_speed))}/s)"
-    )
+    # Save config after at least one successful job
+    if ok_results:
+        try:
+            save_config({
+                "sharepoint_url": sharing_url,
+                "download_dest": str(batch_root),
+                "workers": workers,
+                "flat": True,
+            })
+        except Exception:
+            pass  # Config save is best-effort
 
-    # Offer post-download verification
-    console.print()
-    if Confirm.ask("  [bold]Verify downloaded files?[/bold]", default=False):
+    # Only show success summary and verify prompt when files were actually downloaded
+    if total_downloaded > 0 and ok_results:
+        last_ok = ok_results[-1]
+        total_ok_size = sum(f.size_bytes for f in files) if 'files' in dir() else 0
+        avg_speed = total_ok_size / last_ok["elapsed"] if last_ok["elapsed"] > 0 else 0
+        console.print(
+            f"\n  [bold bright_green]Done![/bold bright_green] {total_downloaded} files "
+            f"in {last_ok['elapsed']:.1f}s"
+        )
+
+    # Offer post-download verification only when there's something to verify
+    if total_downloaded > 0 and Confirm.ask("  [bold]Verify downloaded files?[/bold]", default=False):
         _section_header("06", "VERIFICATION")
         try:
             from rich.progress import BarColumn, DownloadColumn, Progress, SpinnerColumn, TextColumn
             import json as _json
 
-            manifest_path_local = dest / "manifest.json"
+            manifest_path_local = job_dest / "manifest.json"
             if not manifest_path_local.exists():
                 _warn("No manifest.json found — skipping verification.")
             else:
@@ -517,7 +524,7 @@ def _interactive_mode_inner() -> None:
                     def on_progress(name: str, size_bytes: int) -> None:
                         vp.update(task_id, advance=size_bytes)
 
-                    summary = verify_manifest(dest, on_progress=on_progress)
+                    summary = verify_manifest(job_dest, on_progress=on_progress)
 
                 if summary.failed == 0 and summary.missing == 0:
                     _success(f"{summary.passed}/{summary.total} files verified OK")
