@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
@@ -18,7 +19,6 @@ from rich.progress import (
     Progress,
     SpinnerColumn,
     TextColumn,
-    TimeElapsedColumn,
     TimeRemainingColumn,
     TransferSpeedColumn,
 )
@@ -179,6 +179,24 @@ def _truncate_name(name: str, max_len: int = _NAME_WIDTH) -> str:
     return name[: max_len - 1] + "…"
 
 
+def _format_elapsed(seconds: float) -> str:
+    """Format elapsed seconds as a human-readable string.
+
+    Args:
+        seconds: Elapsed time in seconds.
+
+    Returns:
+        Formatted string: "0s" for under 1s, "12s" for under 60s, "2m 15s" for 60s+.
+    """
+    if seconds < 1:
+        return "0s"
+    total = int(seconds)
+    if total < 60:
+        return f"{total}s"
+    minutes, secs = divmod(total, 60)
+    return f"{minutes}m {secs}s"
+
+
 def _make_progress() -> Progress:
     """Create a Rich Progress instance with cyberpunk-styled download columns."""
     return Progress(
@@ -188,7 +206,7 @@ def _make_progress() -> Progress:
         DownloadColumn(binary_units=True),
         TransferSpeedColumn(),
         TimeRemainingColumn(),
-        TimeElapsedColumn(),
+        TextColumn("{task.fields[elapsed]}"),
         TextColumn("{task.fields[status]}"),
     )
 
@@ -254,14 +272,16 @@ def download_all(
     worker_tasks: list = []
     completed_count = 0
     total_pending = len(pending)
+    overall_start = time.monotonic()
     if progress is not None:
         total_size = sum(file_map[url].size_bytes for url in pending if url in file_map)
         overall_task = progress.add_task(
             "Overall".ljust(_NAME_WIDTH), total=total_size,
             status=f"[cyan]0/{total_pending} files[/cyan]",
+            elapsed="0s",
         )
         for i in range(workers):
-            wt = progress.add_task(f"[worker {i}]", total=0, visible=False, status="")
+            wt = progress.add_task(f"[worker {i}]", total=0, visible=False, status="", elapsed="0s")
             worker_tasks.append(wt)
 
     def worker(url: str, worker_id: int) -> None:
@@ -278,7 +298,7 @@ def download_all(
         my_task = None
         if progress is not None and worker_tasks:
             my_task = worker_tasks[worker_id % len(worker_tasks)]
-            # Reset: set completed to 0 and total to this file's size
+            # Reset: set completed to 0 and total to this file's size; reset elapsed to "0s"
             progress.update(
                 my_task,
                 description=_truncate_name(file_entry.name),
@@ -286,16 +306,24 @@ def download_all(
                 completed=0,
                 visible=True,
                 status="",
+                elapsed="0s",
             )
+
+            # Record per-file start time AFTER resetting the task
+            file_start = time.monotonic()
 
             # Capture my_task in closure to avoid stale references
             _task = my_task
             _overall = overall_task
+            _file_start = file_start
+            _overall_start = overall_start
 
-            def on_chunk(n: int, _t=_task, _o=_overall) -> None:
-                progress.update(_t, advance=n)
+            def on_chunk(n: int, _t=_task, _o=_overall, _fs=_file_start, _os=_overall_start) -> None:
+                file_elapsed = _format_elapsed(time.monotonic() - _fs)
+                progress.update(_t, advance=n, elapsed=file_elapsed)
                 if _o is not None:
-                    progress.update(_o, advance=n)
+                    overall_elapsed = _format_elapsed(time.monotonic() - _os)
+                    progress.update(_o, advance=n, elapsed=overall_elapsed)
         else:
             on_chunk = None  # type: ignore[assignment]
 
