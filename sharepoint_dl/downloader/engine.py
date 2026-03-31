@@ -150,8 +150,16 @@ def _download_file(
     expected = file_entry.size_bytes
     actual = part_path.stat().st_size
     if expected > 0 and actual != expected:
-        part_path.unlink(missing_ok=True)
-        raise ValueError(f"Size mismatch: expected {expected}, got {actual}")
+        if actual < expected:
+            # Truncated download — file is incomplete, reject it
+            part_path.unlink(missing_ok=True)
+            raise ValueError(f"Size mismatch: expected {expected}, got {actual}")
+        # File is larger than API reported — SharePoint sometimes recompresses
+        # Office files on download. Keep the file but log the discrepancy.
+        logger.warning(
+            "Size discrepancy (kept): %s expected %d, got %d (+%d bytes)",
+            file_entry.name, expected, actual, actual - expected,
+        )
 
     part_path.rename(dest_path)
     return sha256.hexdigest()
