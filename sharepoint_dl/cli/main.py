@@ -487,18 +487,16 @@ def _interactive_mode_inner() -> None:
     if any_failed:
         raise typer.Exit(code=1)
 
-    # Only show success summary and verify prompt when files were actually downloaded
-    if total_downloaded > 0 and ok_results:
+    # Only show success summary and verify prompt when all jobs succeeded
+    if ok_results and not any_failed and not any_auth_expired:
         last_ok = ok_results[-1]
-        total_ok_size = sum(f.size_bytes for f in files) if 'files' in dir() else 0
-        avg_speed = total_ok_size / last_ok["elapsed"] if last_ok["elapsed"] > 0 else 0
         console.print(
             f"\n  [bold bright_green]Done![/bold bright_green] {total_downloaded} files "
             f"in {last_ok['elapsed']:.1f}s"
         )
 
-    # Offer post-download verification only when there's something to verify
-    if total_downloaded > 0 and Confirm.ask("  [bold]Verify downloaded files?[/bold]", default=False):
+    # Offer post-download verification only on clean completion
+    if ok_results and not any_failed and not any_auth_expired and Confirm.ask("  [bold]Verify downloaded files?[/bold]", default=False):
         _section_header("06", "VERIFICATION")
         try:
             from rich.progress import BarColumn, DownloadColumn, Progress, SpinnerColumn, TextColumn
