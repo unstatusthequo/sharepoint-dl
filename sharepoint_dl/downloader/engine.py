@@ -157,12 +157,24 @@ def _download_file(
     return sha256.hexdigest()
 
 
+def _truncate_name(name: str, max_len: int = 40) -> str:
+    """Truncate a filename for progress display, keeping extension visible."""
+    if len(name) <= max_len:
+        return name
+    stem, _, ext = name.rpartition(".")
+    if ext and len(ext) <= 5:
+        # Keep extension: "long_filena…me.pdf"
+        available = max_len - len(ext) - 2  # 2 for "…."
+        return f"{stem[:available]}….{ext}"
+    return name[: max_len - 1] + "…"
+
+
 def _make_progress() -> Progress:
     """Create a Rich Progress instance with cyberpunk-styled download columns."""
     return Progress(
         SpinnerColumn(style="bright_magenta"),
         TextColumn("[bright_cyan]{task.description}[/bright_cyan]"),
-        BarColumn(bar_width=None, complete_style="bright_magenta", finished_style="bright_green"),
+        BarColumn(bar_width=20, complete_style="bright_magenta", finished_style="bright_green"),
         DownloadColumn(binary_units=True),
         TransferSpeedColumn(),
         TimeRemainingColumn(),
@@ -255,7 +267,7 @@ def download_all(
             # Reset: set completed to 0 and total to this file's size
             progress.update(
                 my_task,
-                description=file_entry.name,
+                description=_truncate_name(file_entry.name),
                 total=file_entry.size_bytes,
                 completed=0,
                 visible=True,
