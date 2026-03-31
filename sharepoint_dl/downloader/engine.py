@@ -385,6 +385,11 @@ def download_all(
             except Exception:
                 pass  # Already recorded in state
 
+    # Hide worker tasks between phases so stale rows don't linger
+    if progress is not None:
+        for wt in worker_tasks:
+            progress.update(wt, visible=False)
+
     if auth_error:
         raise auth_error[0]
 
@@ -426,8 +431,26 @@ def download_all(
                 except Exception:
                     pass
 
+        # Hide worker tasks after retry round
+        if progress is not None:
+            for wt in worker_tasks:
+                progress.update(wt, visible=False)
+
         if retry_auth_error:
             raise retry_auth_error[0]
+
+    # Finalize overall progress — ensure it shows complete
+    if progress is not None and overall_task is not None:
+        overall_elapsed = _format_elapsed(time.monotonic() - overall_start)
+        completed_urls = state.complete_files()
+        failed_entries = state.failed_files()
+        total_done = len(completed_urls) + len(failed_entries)
+        progress.update(
+            overall_task,
+            completed=progress.tasks[overall_task].total,
+            status=f"[cyan]{total_done}/{total_pending} files[/cyan]",
+            elapsed=overall_elapsed,
+        )
 
     return state.complete_files(), state.failed_files()
 
