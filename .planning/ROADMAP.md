@@ -3,7 +3,7 @@
 ## Milestones
 
 - ✅ **v1.0 MVP** - Phases 1-6 (shipped 2026-03-27)
-- 🚧 **v1.1 Feature Expansion** - Phases 7-9 (in progress)
+- 🚧 **v1.1 Feature Expansion** - Phases 7-10 (in progress)
 
 ## Phases
 
@@ -120,8 +120,9 @@ Plans:
 **Milestone Goal:** Make SPDL easier to use (auto-detect folder, config file, batch mode), more reliable during long downloads (session refresh, throttle), verifiable after download (verify command), and observable throughout (ETA, log file).
 
 - [x] **Phase 7: Zero-Risk UX Wins** - ETA/speed display, timestamped log file, and auto-detect folder from sharing link (completed 2026-03-30)
-- [ ] **Phase 8: New Contained Modules** - Config file, bandwidth throttle, and post-download verify command
+- [x] **Phase 8: New Contained Modules** - Config file, bandwidth throttle, and post-download verify command (completed 2026-03-30)
 - [x] **Phase 9: Batch and Session Resilience** - Multi-folder batch download and automatic mid-download session refresh (completed 2026-03-30)
+- [ ] **Phase 10: TUI Polish** - CSV manifest report, TUI-first verify/throttle prompts, per-file elapsed timer
 
 ## Phase Details
 
@@ -171,10 +172,21 @@ Plans:
 - [x] 09-02-PLAN.md — Engine on_auth_expired callback + CLI ReauthController wiring
 - [x] 09-03-PLAN.md — Batch queue UX with per-job subdirectories and summary table
 
+### Phase 10: TUI Polish
+**Goal**: Download reports are human-readable, all features are accessible through the interactive TUI, and progress display is accurate per file
+**Depends on**: Phase 9
+**Requirements**: UX-05, FOR-02, UX-06
+**Success Criteria** (what must be TRUE):
+  1. After a download completes, a `manifest.csv` file exists alongside `manifest.json` with columns: filename, local_path, size_bytes, sha256 (full), status, downloaded_at — openable in Excel/Sheets
+  2. On startup, the TUI asks "Download or Verify?" — selecting Verify prompts for a folder path and runs verification without needing CLI flags
+  3. After worker count prompt, the TUI asks "Bandwidth limit?" (e.g. 5MB, or Enter to skip) — throttle is applied if provided
+  4. Per-file progress bars show elapsed time since that file started downloading, not overall session elapsed time
+**Plans**: TBD
+
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 9
+Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 9 → 10
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
@@ -187,3 +199,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 7. Zero-Risk UX Wins | v1.1 | 2/2 | Complete | 2026-03-30 |
 | 8. New Contained Modules | v1.1 | 1/2 | In Progress|  |
 | 9. Batch and Session Resilience | v1.1 | 3/3 | Complete   | 2026-03-30 |
+| 10. TUI Polish | v1.1 | 0/TBD | Not started | - |

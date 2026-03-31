@@ -87,6 +87,8 @@ Deferred to future release. Tracked but not in current roadmap.
 - [x] **UX-02**: User can queue multiple folders for download in a single interactive session
 - [x] **UX-03**: Tool saves default settings (SharePoint URL, destination, workers) to a config file and loads them on startup
 - [x] **UX-04**: Progress display shows estimated time remaining and current download speed
+- [ ] **UX-05**: On startup, TUI offers "Download or Verify?" — verify and throttle are accessible through interactive prompts, not just CLI flags
+- [ ] **UX-06**: Per-file progress bars show elapsed time since that file started downloading, not overall session time
 
 ### Reliability
 
@@ -97,6 +99,7 @@ Deferred to future release. Tracked but not in current roadmap.
 ### Forensics
 
 - [x] **FOR-01**: User can run a `verify` command that re-reads files from disk, recomputes SHA-256, and compares against manifest.json
+- [ ] **FOR-02**: After download, a `manifest.csv` file is generated with full SHA-256 hashes and per-file metadata, openable in Excel/Sheets
 
 ## v1.1 Deferred
 
@@ -147,12 +150,15 @@ Deferred to future release. Tracked but not in current roadmap.
 | FOR-01 | Phase 8 | Complete |
 | UX-02 | Phase 9 | Complete |
 | REL-01 | Phase 9 | Complete |
+| UX-05 | Phase 10 | Pending |
+| UX-06 | Phase 10 | Pending |
+| FOR-02 | Phase 10 | Pending |
 
 **Coverage:**
 - v1.0 requirements: 17/17 complete
-- v1.1 requirements: 8/8 mapped
+- v1.1 requirements: 11/11 mapped
 - Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-27*
-*Last updated: 2026-03-30 — v1.1 traceability mapped to Phases 7-9*
+*Last updated: 2026-03-31 — Phase 10 added for UAT polish items*
