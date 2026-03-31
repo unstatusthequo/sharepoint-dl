@@ -286,16 +286,17 @@ def _interactive_mode_inner() -> None:
             })
             break
 
-        # --- PER-JOB SUBDIRECTORY ---
-        job_dest = _job_dest(batch_root, server_relative_path)
-
-        # --- EXECUTE DOWNLOAD ---
-        dl_logger = setup_download_logger(job_dest)
+        # --- PER-JOB SETUP ---
+        # Metadata (state.json, manifest.json, download.log) at batch_root
+        # Downloaded files go into timestamped subdirectory
+        batch_root.mkdir(parents=True, exist_ok=True)
+        job_files_dir = _job_dest(batch_root)
+        dl_logger = setup_download_logger(batch_root)
         dl_logger.info("Session validated for %s", site_url)
         dl_logger.info("Enumerated %d files (%s total)", len(files), _format_size(total_size))
         dl_logger.info(
-            "Starting download: %d files, %d workers, dest=%s, flat=True",
-            len(files), workers, job_dest,
+            "Starting download: %d files, %d workers, dest=%s, files=%s, flat=True",
+            len(files), workers, batch_root, job_files_dir,
         )
 
         start_time = time.time()
@@ -314,13 +315,14 @@ def _interactive_mode_inner() -> None:
             progress = _make_progress()
             with progress:
                 completed, failed = download_all(
-                    session, files, job_dest, site_url,
+                    session, files, batch_root, site_url,
                     workers=workers, progress=progress, flat=True,
                     on_auth_expired=reauth.trigger,
+                    files_dir=job_files_dir,
                 )
         except AuthExpiredError:
             auth_expired = True
-            state = JobState(job_dest)
+            state = JobState(batch_root)
             completed = state.complete_files()
             failed = state.failed_files()
             dl_logger.error(
@@ -330,19 +332,19 @@ def _interactive_mode_inner() -> None:
         except KeyboardInterrupt:
             cancelled = True
             console.print("\n\n[yellow]Cancelled — saving progress...[/yellow]")
-            state = JobState(job_dest)
+            state = JobState(batch_root)
             completed = state.complete_files()
             failed = state.failed_files()
             dl_logger.warning("Download cancelled by user -- %d completed", len(completed))
         else:
-            state = JobState(job_dest)
+            state = JobState(batch_root)
         finally:
             elapsed = time.time() - start_time
 
         # Manifest (even on cancel -- captures what completed so far)
         manifest_path = None
         if state is not None and completed:
-            manifest_path = generate_manifest(state, job_dest, sharing_url, server_relative_path, flat=True)
+            manifest_path = generate_manifest(state, batch_root, sharing_url, server_relative_path, flat=True)
             if manifest_path:
                 dl_logger.info("Manifest written: %s", manifest_path)
 
@@ -502,7 +504,7 @@ def _interactive_mode_inner() -> None:
             from rich.progress import BarColumn, DownloadColumn, Progress, SpinnerColumn, TextColumn
             import json as _json
 
-            manifest_path_local = job_dest / "manifest.json"
+            manifest_path_local = batch_root / "manifest.json"
             if not manifest_path_local.exists():
                 _warn("No manifest.json found — skipping verification.")
             else:
@@ -523,7 +525,7 @@ def _interactive_mode_inner() -> None:
                     def on_progress(name: str, size_bytes: int) -> None:
                         vp.update(task_id, advance=size_bytes)
 
-                    summary = verify_manifest(job_dest, on_progress=on_progress)
+                    summary = verify_manifest(batch_root, on_progress=on_progress)
 
                 if summary.failed == 0 and summary.missing == 0:
                     _success(f"{summary.passed}/{summary.total} files verified OK")
@@ -538,18 +540,16 @@ def _interactive_mode_inner() -> None:
             _warn(f"Verification error: {exc}")
 
 
-def _job_dest(batch_root: Path, folder_path: str) -> Path:
-    """Create a timestamped subdirectory for a batch job.
+def _job_dest(batch_root: Path) -> Path:
+    """Create a timestamped subdirectory for a download job.
 
-    Naming: {YYYY-MM-DD_HHMMSS}_{folder_leaf_name}
-    Per D-09: each batch job gets its own subdirectory.
+    Naming: {YYYY-MM-DD_HHMMSS}
+    Metadata (state.json, manifest.json, download.log) lives at batch_root.
+    Downloaded files go into this timestamped subdirectory.
     """
     from datetime import datetime
-    folder_leaf = folder_path.rsplit("/", 1)[-1] if "/" in folder_path else folder_path
-    # Sanitize leaf name: replace spaces and special chars
-    safe_leaf = "".join(c if c.isalnum() or c in "-_" else "_" for c in folder_leaf)
     ts = datetime.now().strftime("%Y-%m-%d_%H%M%S")
-    job_dir = batch_root / f"{ts}_{safe_leaf}"
+    job_dir = batch_root / ts
     job_dir.mkdir(parents=True, exist_ok=True)
     return job_dir
 

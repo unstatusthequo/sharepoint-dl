@@ -159,20 +159,22 @@ class JobState:
                 if v["status"] == FileStatus.FAILED
             ]
 
-    def cleanup_interrupted(self, dest_dir: Path) -> None:
+    def cleanup_interrupted(self, dest_dir: Path, files_dir: Path | None = None) -> None:
         """Delete .part files for DOWNLOADING entries and reset to PENDING.
 
         Called on resume to clean up artifacts from interrupted downloads.
 
         Args:
-            dest_dir: The root download destination directory.
+            dest_dir: The root metadata directory.
+            files_dir: Where downloaded files live. Defaults to dest_dir/files.
         """
+        actual_files_dir = files_dir if files_dir is not None else dest_dir / "files"
         with self._lock:
             for entry in self._data.values():
                 if entry["status"] != FileStatus.DOWNLOADING:
                     continue
 
-                part_path = self._resolve_interrupted_part_path(dest_dir, entry)
+                part_path = self._resolve_interrupted_part_path(actual_files_dir, entry)
                 if part_path is not None:
                     part_path.unlink(missing_ok=True)
 
@@ -180,13 +182,13 @@ class JobState:
             self._save()
 
     @staticmethod
-    def _resolve_interrupted_part_path(dest_dir: Path, entry: dict) -> Path | None:
+    def _resolve_interrupted_part_path(files_dir: Path, entry: dict) -> Path | None:
         """Resolve the exact .part path for one interrupted entry."""
         local_path = entry_local_relative_path(entry)
         if local_path is None:
             return None
 
-        local = dest_dir / "files" / local_path
+        local = files_dir / local_path
         return local.with_suffix(local.suffix + ".part")
 
     def all_entries(self) -> dict[str, dict]:

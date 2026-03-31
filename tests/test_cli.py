@@ -616,7 +616,7 @@ class TestDownloadAuthExpiredState:
         assert manifest["metadata"]["total_files"] == 1
         assert len(manifest["files"]) == 1
         assert len(manifest["failed"]) == 1
-        assert manifest["files"][0]["local_path"] == "files/custodian1/f1.dat"
+        assert manifest["files"][0]["local_path"] == "custodian1/f1.dat"
         assert manifest["failed"][0]["error"] == "auth_expired"
 
 
@@ -766,7 +766,7 @@ class TestManifestIntegration:
 
         assert result.exit_code == 0
         manifest = json.loads((dest / "manifest.json").read_text())
-        assert manifest["files"][0]["local_path"] == "files/flat.dat"
+        assert manifest["files"][0]["local_path"] == "flat.dat"
 
     @patch("sharepoint_dl.cli.main.generate_manifest")
     @patch("sharepoint_dl.cli.main.JobState")
@@ -893,41 +893,29 @@ class TestBatchMode:
     """Tests for _job_dest helper and batch mode subdirectory isolation."""
 
     def test_job_dest_naming(self, tmp_path):
-        """_job_dest creates correctly named subdirectory with timestamp prefix and sanitized leaf."""
+        """_job_dest creates correctly named subdirectory with timestamp."""
         from sharepoint_dl.cli.main import _job_dest
 
-        folder_path = "custodian1"
-        job_dir = _job_dest(tmp_path, folder_path)
+        job_dir = _job_dest(tmp_path)
 
-        # Name should end with the sanitized folder leaf
-        assert job_dir.name.endswith("_custodian1")
-        # Timestamp prefix: YYYY-MM-DD_HHMMSS
-        parts = job_dir.name.split("_")
-        # At minimum 3 parts: date, time, leaf
-        assert len(parts) >= 3
-        # First part looks like a date
-        assert len(parts[0]) == 10  # YYYY-MM-DD
-        assert parts[0].count("-") == 2
+        # Name is a timestamp: YYYY-MM-DD_HHMMSS
+        name = job_dir.name
+        assert len(name) == 17  # YYYY-MM-DD_HHMMSS
+        assert name[4] == "-" and name[7] == "-" and name[10] == "_"
 
-    def test_job_dest_with_slashes(self, tmp_path):
-        """_job_dest with nested folder path uses only the leaf name."""
+    def test_job_dest_is_under_batch_root(self, tmp_path):
+        """_job_dest returns a path under the batch root."""
         from sharepoint_dl.cli.main import _job_dest
 
-        folder_path = "/sites/shared/Documents/custodian1"
-        job_dir = _job_dest(tmp_path, folder_path)
+        job_dir = _job_dest(tmp_path)
 
-        # Should use only 'custodian1', not the full path
-        assert job_dir.name.endswith("_custodian1")
-        assert "sites" not in job_dir.name
-        assert "shared" not in job_dir.name
-        assert "Documents" not in job_dir.name
+        assert job_dir.parent == tmp_path
 
     def test_job_dest_creates_directory(self, tmp_path):
         """_job_dest creates the subdirectory on disk."""
         from sharepoint_dl.cli.main import _job_dest
 
-        folder_path = "my_folder"
-        job_dir = _job_dest(tmp_path, folder_path)
+        job_dir = _job_dest(tmp_path)
 
         assert job_dir.exists()
         assert job_dir.is_dir()

@@ -57,7 +57,7 @@ def generate_manifest(
             {
                 "name": entry["name"],
                 "server_relative_url": url,
-                "local_path": f"files/{entry_local_relative_path(entry, flat=flat)}",
+                "local_path": entry.get("local_path") or entry_local_relative_path(entry, flat=flat),
                 "size_bytes": entry["size_bytes"],
                 "sha256": entry["sha256"],
                 "downloaded_at": entry["downloaded_at"],

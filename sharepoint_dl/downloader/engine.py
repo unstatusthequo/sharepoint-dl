@@ -195,6 +195,7 @@ def download_all(
     flat: bool = False,
     throttle: "TokenBucket | None" = None,
     on_auth_expired: "Callable[[], bool] | None" = None,
+    files_dir: Path | None = None,
 ) -> tuple[list[str], list[tuple[str, str]]]:
     """Orchestrate concurrent file downloads with progress and auth halt.
 
@@ -206,7 +207,7 @@ def download_all(
     Args:
         session: Authenticated requests.Session.
         files: List of FileEntry objects to download.
-        dest_dir: Root download destination directory.
+        dest_dir: Root directory for metadata (state.json).
         site_url: SharePoint site URL.
         workers: Number of concurrent download workers (default 3).
         progress: Optional Rich Progress instance for visual feedback.
@@ -215,6 +216,8 @@ def download_all(
             auth_halt is cleared and workers resume (file stays FAILED for
             retry loop). If it returns False or is None, existing abort
             behavior is preserved.
+        files_dir: Directory for downloaded files. Defaults to dest_dir/files
+            if not specified.
 
     Returns:
         Tuple of (completed_urls, failed_entries) where failed_entries
@@ -224,9 +227,10 @@ def download_all(
         AuthExpiredError: If any worker encounters 401/403 and on_auth_expired
             is None or returns False.
     """
+    actual_files_dir = files_dir if files_dir is not None else dest_dir / "files"
     state = JobState(dest_dir)
     state.initialize(files)
-    state.cleanup_interrupted(dest_dir)
+    state.cleanup_interrupted(dest_dir, files_dir=actual_files_dir)
 
     file_map = {f.server_relative_url: f for f in files}
     pending = state.pending_files()
@@ -257,7 +261,7 @@ def download_all(
             return
 
         file_entry = file_map[url]
-        dest_path = _local_path(dest_dir, file_entry, flat=flat)
+        dest_path = _local_path(actual_files_dir, file_entry, flat=flat)
         local_path = dest_path.relative_to(dest_dir).as_posix()
 
         state.set_status(url, FileStatus.DOWNLOADING, local_path=local_path)
@@ -392,20 +396,16 @@ def download_all(
     return state.complete_files(), state.failed_files()
 
 
-def _local_path(dest_dir: Path, file_entry: FileEntry, flat: bool = False) -> Path:
+def _local_path(files_dir: Path, file_entry: FileEntry, flat: bool = False) -> Path:
     """Construct local path for a downloaded file.
 
-    Files go into a ``files/`` subdirectory so that metadata
-    (state.json, manifest.json, download.log) stays separate from
-    downloaded content.
-
     Args:
-        dest_dir: Root job directory (metadata lives here).
+        files_dir: Directory where downloaded files are stored.
         file_entry: FileEntry with folder_path and name.
-        flat: If True, put all files directly in files/ (no subdirectories).
+        flat: If True, put all files directly in files_dir (no subdirectories).
 
     Returns:
-        Path to the local file destination inside ``dest_dir/files/``.
+        Path to the local file destination.
     """
     relative = derive_local_relative_path(file_entry.folder_path, file_entry.name, flat=flat)
-    return dest_dir / "files" / relative
+    return files_dir / relative
