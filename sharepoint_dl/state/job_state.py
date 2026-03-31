@@ -186,7 +186,7 @@ class JobState:
         if local_path is None:
             return None
 
-        local = dest_dir / local_path
+        local = dest_dir / "files" / local_path
         return local.with_suffix(local.suffix + ".part")
 
     def all_entries(self) -> dict[str, dict]:

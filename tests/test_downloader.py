@@ -433,7 +433,7 @@ class TestResumeSkip:
             state_data = json.loads((tmp_path / "state.json").read_text())
             tracked = state_data[entry.server_relative_url]
             assert tracked["status"] == "downloading"
-            assert tracked["local_path"] == "Docs/file_0.dat"
+            assert tracked["local_path"] == "files/Docs/file_0.dat"
 
             resp = MagicMock()
             resp.status_code = 200
@@ -450,7 +450,7 @@ class TestResumeSkip:
         assert len(failed) == 0
         assert json.loads((tmp_path / "state.json").read_text())[entry.server_relative_url][
             "local_path"
-        ] == "Docs/file_0.dat"
+        ] == "files/Docs/file_0.dat"
 
     def test_persists_flat_local_path_before_streaming(self, tmp_path: Path):
         entries = _make_test_entries(1)
@@ -461,7 +461,7 @@ class TestResumeSkip:
             state_data = json.loads((tmp_path / "state.json").read_text())
             tracked = state_data[entry.server_relative_url]
             assert tracked["status"] == "downloading"
-            assert tracked["local_path"] == entry.name
+            assert tracked["local_path"] == "files/" + entry.name
 
             resp = MagicMock()
             resp.status_code = 200
@@ -480,7 +480,7 @@ class TestResumeSkip:
         assert len(failed) == 0
         assert json.loads((tmp_path / "state.json").read_text())[entry.server_relative_url][
             "local_path"
-        ] == entry.name
+        ] == "files/" + entry.name
 
 
 class TestReauthIntegration:

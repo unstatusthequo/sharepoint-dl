@@ -132,7 +132,7 @@ class TestManifestPerFileFields:
         )
 
         manifest = json.loads(path.read_text())
-        assert manifest["files"][0]["local_path"] == "custodian1/evidence_001.E01"
+        assert manifest["files"][0]["local_path"] == "files/custodian1/evidence_001.E01"
 
     def test_manifest_uses_persisted_local_path_for_flat_entries(
         self, tmp_path: Path, file_entries: list[FileEntry]
@@ -157,7 +157,7 @@ class TestManifestPerFileFields:
         )
 
         manifest = json.loads(path.read_text())
-        assert manifest["files"][0]["local_path"] == "evidence_001.E01"
+        assert manifest["files"][0]["local_path"] == "files/evidence_001.E01"
 
 
 class TestManifestMetadata:
@@ -351,7 +351,7 @@ class TestManifestEdgeCases:
         )
 
         manifest = json.loads(path.read_text())
-        assert manifest["files"][0]["local_path"] == "custodian1/evidence_001.E01"
+        assert manifest["files"][0]["local_path"] == "files/custodian1/evidence_001.E01"
 
     def test_invalid_stored_local_path_falls_back_safely(
         self, tmp_path: Path, file_entries: list[FileEntry]
@@ -376,7 +376,7 @@ class TestManifestEdgeCases:
         )
 
         manifest = json.loads(path.read_text())
-        assert manifest["files"][0]["local_path"] == "custodian1/evidence_001.E01"
+        assert manifest["files"][0]["local_path"] == "files/custodian1/evidence_001.E01"
 
     def test_persisted_local_path_wins_over_fallback(
         self, tmp_path: Path, file_entries: list[FileEntry]
@@ -401,7 +401,7 @@ class TestManifestEdgeCases:
         )
 
         manifest = json.loads(path.read_text())
-        assert manifest["files"][0]["local_path"] == "evidence/custom-name.E01"
+        assert manifest["files"][0]["local_path"] == "files/evidence/custom-name.E01"
 
     def test_missing_local_path_uses_flat_fallback_when_requested(
         self, tmp_path: Path, file_entries: list[FileEntry]
@@ -426,7 +426,7 @@ class TestManifestEdgeCases:
         )
 
         manifest = json.loads(path.read_text())
-        assert manifest["files"][0]["local_path"] == "evidence_001.E01"
+        assert manifest["files"][0]["local_path"] == "files/evidence_001.E01"
 
 
 class TestManifestSha256FromState:

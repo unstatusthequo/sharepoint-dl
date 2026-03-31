@@ -119,12 +119,12 @@ class TestPartCleanup:
             local_path=tracked_local_path,
         )
 
-        tracked_part = tmp_path / tracked_local_path
+        tracked_part = tmp_path / "files" / tracked_local_path
         tracked_part = tracked_part.with_suffix(tracked_part.suffix + ".part")
         tracked_part.parent.mkdir(parents=True, exist_ok=True)
         tracked_part.write_bytes(b"partial data")
 
-        unrelated_part = tmp_path / "custodian2" / "duplicate.bin.part"
+        unrelated_part = tmp_path / "files" / "custodian2" / "duplicate.bin.part"
         unrelated_part.parent.mkdir(parents=True, exist_ok=True)
         unrelated_part.write_bytes(b"other partial data")
 
@@ -152,7 +152,8 @@ class TestPartCleanup:
             local_path=entry.name,
         )
 
-        part_file = tmp_path / "evidence_001.E01.part"
+        part_file = tmp_path / "files" / "evidence_001.E01.part"
+        part_file.parent.mkdir(parents=True, exist_ok=True)
         part_file.write_bytes(b"partial data")
 
         state.cleanup_interrupted(tmp_path)
@@ -265,11 +266,11 @@ class TestInitializeIdempotent:
         state = JobState(tmp_path)
         state.initialize([tracked, sibling])
 
-        tracked_part = tmp_path / "custodian1" / "duplicate.bin.part"
+        tracked_part = tmp_path / "files" / "custodian1" / "duplicate.bin.part"
         tracked_part.parent.mkdir(parents=True, exist_ok=True)
         tracked_part.write_bytes(b"partial data")
 
-        sibling_part = tmp_path / "custodian2" / "duplicate.bin.part"
+        sibling_part = tmp_path / "files" / "custodian2" / "duplicate.bin.part"
         sibling_part.parent.mkdir(parents=True, exist_ok=True)
         sibling_part.write_bytes(b"other partial data")
 

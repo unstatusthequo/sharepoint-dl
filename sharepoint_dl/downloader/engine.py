@@ -66,7 +66,7 @@ def _build_download_url(site_url: str, server_relative_url: str) -> str:
     Returns:
         Full download.aspx URL with SourceUrl parameter.
     """
-    encoded = quote(server_relative_url, safe="/:@!$&'()*,;=")
+    encoded = quote(server_relative_url, safe="/:@!$'()*,;=")
     return f"{site_url.rstrip('/')}/_layouts/15/download.aspx?SourceUrl={encoded}"
 
 
@@ -393,13 +393,17 @@ def download_all(
 def _local_path(dest_dir: Path, file_entry: FileEntry, flat: bool = False) -> Path:
     """Construct local path for a downloaded file.
 
+    Files go into a ``files/`` subdirectory so that metadata
+    (state.json, manifest.json, download.log) stays separate from
+    downloaded content.
+
     Args:
-        dest_dir: Root download destination directory.
+        dest_dir: Root job directory (metadata lives here).
         file_entry: FileEntry with folder_path and name.
-        flat: If True, put all files directly in dest_dir (no subdirectories).
+        flat: If True, put all files directly in files/ (no subdirectories).
 
     Returns:
-        Path to the local file destination.
+        Path to the local file destination inside ``dest_dir/files/``.
     """
     relative = derive_local_relative_path(file_entry.folder_path, file_entry.name, flat=flat)
-    return dest_dir / relative
+    return dest_dir / "files" / relative

@@ -616,7 +616,7 @@ class TestDownloadAuthExpiredState:
         assert manifest["metadata"]["total_files"] == 1
         assert len(manifest["files"]) == 1
         assert len(manifest["failed"]) == 1
-        assert manifest["files"][0]["local_path"] == "custodian1/f1.dat"
+        assert manifest["files"][0]["local_path"] == "files/custodian1/f1.dat"
         assert manifest["failed"][0]["error"] == "auth_expired"
 
 
@@ -766,7 +766,7 @@ class TestManifestIntegration:
 
         assert result.exit_code == 0
         manifest = json.loads((dest / "manifest.json").read_text())
-        assert manifest["files"][0]["local_path"] == "flat.dat"
+        assert manifest["files"][0]["local_path"] == "files/flat.dat"
 
     @patch("sharepoint_dl.cli.main.generate_manifest")
     @patch("sharepoint_dl.cli.main.JobState")
