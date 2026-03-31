@@ -455,3 +455,163 @@ class TestManifestSha256FromState:
         manifest = json.loads(path.read_text())
         for f in manifest["files"]:
             assert f["sha256"] == expected_hashes[f["server_relative_url"]]
+
+
+class TestManifestCsvGeneration:
+    """generate_manifest() creates manifest.csv alongside manifest.json."""
+
+    def test_csv_created_alongside_json(self, tmp_path: Path, file_entries: list[FileEntry]):
+        """Test 1: generate_manifest() creates manifest.csv alongside manifest.json."""
+        from sharepoint_dl.manifest.writer import generate_manifest
+
+        state = _setup_complete_state(tmp_path, file_entries)
+        generate_manifest(
+            state=state,
+            dest_dir=tmp_path,
+            source_url="https://contoso.sharepoint.com/sites/shared/Images",
+            root_folder="Images",
+        )
+
+        assert (tmp_path / "manifest.csv").exists()
+        assert (tmp_path / "manifest.json").exists()
+
+    def test_csv_has_correct_header_row(self, tmp_path: Path, file_entries: list[FileEntry]):
+        """Test 2: CSV has header row: filename,local_path,size_bytes,sha256,status,error,downloaded_at."""
+        import csv as csv_module
+        from sharepoint_dl.manifest.writer import generate_manifest
+
+        state = _setup_complete_state(tmp_path, file_entries)
+        generate_manifest(
+            state=state,
+            dest_dir=tmp_path,
+            source_url="https://contoso.sharepoint.com/sites/shared/Images",
+            root_folder="Images",
+        )
+
+        with (tmp_path / "manifest.csv").open(newline="") as fh:
+            reader = csv_module.DictReader(fh)
+            headers = reader.fieldnames
+
+        assert headers == ["filename", "local_path", "size_bytes", "sha256", "status", "error", "downloaded_at"]
+
+    def test_complete_files_have_correct_csv_fields(self, tmp_path: Path, file_entries: list[FileEntry]):
+        """Test 3: Complete files have status=COMPLETE, error="" (blank), and full sha256 hash."""
+        import csv as csv_module
+        from sharepoint_dl.manifest.writer import generate_manifest
+
+        state = _setup_complete_state(tmp_path, file_entries)
+        generate_manifest(
+            state=state,
+            dest_dir=tmp_path,
+            source_url="https://contoso.sharepoint.com/sites/shared/Images",
+            root_folder="Images",
+        )
+
+        with (tmp_path / "manifest.csv").open(newline="") as fh:
+            rows = list(csv_module.DictReader(fh))
+
+        complete_rows = [r for r in rows if r["status"] == "COMPLETE"]
+        assert len(complete_rows) == 3
+        for row in complete_rows:
+            assert row["error"] == ""
+            assert len(row["sha256"]) == 64  # Full SHA-256 hex digest
+
+    def test_failed_files_have_correct_csv_fields(self, tmp_path: Path, file_entries: list[FileEntry]):
+        """Test 4: Failed files have status=FAILED, error contains error reason, sha256="" (blank)."""
+        import csv as csv_module
+        from sharepoint_dl.manifest.writer import generate_manifest
+        from sharepoint_dl.state.job_state import JobState
+
+        state = JobState(tmp_path)
+        state.initialize(file_entries)
+        state.set_status(
+            file_entries[0].server_relative_url,
+            FileStatus.COMPLETE,
+            sha256="aabbccdd" * 8,
+            downloaded_at="2026-03-27T10:00:00Z",
+        )
+        state.set_status(
+            file_entries[1].server_relative_url,
+            FileStatus.COMPLETE,
+            sha256="11223344" * 8,
+            downloaded_at="2026-03-27T10:05:00Z",
+        )
+        state.set_status(
+            file_entries[2].server_relative_url,
+            FileStatus.FAILED,
+            error="network timeout",
+        )
+
+        generate_manifest(
+            state=state,
+            dest_dir=tmp_path,
+            source_url="https://contoso.sharepoint.com/sites/shared/Images",
+            root_folder="Images",
+        )
+
+        with (tmp_path / "manifest.csv").open(newline="") as fh:
+            rows = list(csv_module.DictReader(fh))
+
+        failed_rows = [r for r in rows if r["status"] == "FAILED"]
+        assert len(failed_rows) == 1
+        assert "network timeout" in failed_rows[0]["error"]
+        assert failed_rows[0]["sha256"] == ""
+        assert failed_rows[0]["size_bytes"] == "0"
+        assert failed_rows[0]["local_path"] == ""
+        assert failed_rows[0]["downloaded_at"] == ""
+
+    def test_csv_rows_sorted_by_server_relative_url(self, tmp_path: Path, file_entries: list[FileEntry]):
+        """Test 5: CSV rows are sorted by server_relative_url (same order as JSON)."""
+        import csv as csv_module
+        from sharepoint_dl.manifest.writer import generate_manifest
+
+        state = _setup_complete_state(tmp_path, file_entries)
+        generate_manifest(
+            state=state,
+            dest_dir=tmp_path,
+            source_url="https://contoso.sharepoint.com/sites/shared/Images",
+            root_folder="Images",
+        )
+
+        with (tmp_path / "manifest.csv").open(newline="") as fh:
+            rows = list(csv_module.DictReader(fh))
+
+        filenames = [r["filename"] for r in rows]
+        assert filenames == sorted(filenames)
+
+    def test_csv_properly_escapes_commas_and_quotes(self, tmp_path: Path):
+        """Test 6: Filenames with commas/quotes are properly escaped by csv.writer."""
+        import csv as csv_module
+        from sharepoint_dl.enumerator.traversal import FileEntry as FE
+        from sharepoint_dl.manifest.writer import generate_manifest
+        from sharepoint_dl.state.job_state import JobState
+
+        tricky_entry = FE(
+            name='file,"tricky".E01',
+            server_relative_url='/sites/shared/Images/file,"tricky".E01',
+            size_bytes=100,
+            folder_path="/sites/shared/Images",
+        )
+
+        state = JobState(tmp_path)
+        state.initialize([tricky_entry])
+        state.set_status(
+            tricky_entry.server_relative_url,
+            FileStatus.COMPLETE,
+            sha256="aabbccdd" * 8,
+            downloaded_at="2026-03-27T10:00:00Z",
+        )
+
+        generate_manifest(
+            state=state,
+            dest_dir=tmp_path,
+            source_url="https://contoso.sharepoint.com/sites/shared/Images",
+            root_folder="Images",
+        )
+
+        # CSV should be parseable (no parse errors)
+        with (tmp_path / "manifest.csv").open(newline="") as fh:
+            rows = list(csv_module.DictReader(fh))
+
+        assert len(rows) == 1
+        assert rows[0]["filename"] == 'file,"tricky".E01'
