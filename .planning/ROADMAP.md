@@ -181,7 +181,11 @@ Plans:
   2. On startup, the TUI asks "Download or Verify?" — selecting Verify prompts for a folder path and runs verification without needing CLI flags
   3. After worker count prompt, the TUI asks "Bandwidth limit?" (e.g. 5MB, or Enter to skip) — throttle is applied if provided
   4. Per-file progress bars show elapsed time since that file started downloading, not overall session elapsed time
-**Plans**: TBD
+**Plans**: 2 plans
+
+Plans:
+- [ ] 10-01-PLAN.md — CSV manifest generation + per-file elapsed timer in progress bars
+- [ ] 10-02-PLAN.md — TUI startup menu (Download/Verify) + interactive throttle prompt
 
 ## Progress
 
@@ -199,4 +203,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 7. Zero-Risk UX Wins | v1.1 | 2/2 | Complete | 2026-03-30 |
 | 8. New Contained Modules | v1.1 | 1/2 | In Progress|  |
 | 9. Batch and Session Resilience | v1.1 | 3/3 | Complete   | 2026-03-30 |
-| 10. TUI Polish | v1.1 | 0/TBD | Not started | - |
+| 10. TUI Polish | v1.1 | 0/2 | Not started | - |
