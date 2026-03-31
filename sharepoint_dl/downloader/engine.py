@@ -157,13 +157,15 @@ def _download_file(
     return sha256.hexdigest()
 
 
-def _truncate_name(name: str, max_len: int = 40) -> str:
+_NAME_WIDTH = 20  # Fixed display width for filenames in progress bar
+
+
+def _truncate_name(name: str, max_len: int = _NAME_WIDTH) -> str:
     """Truncate a filename for progress display, keeping extension visible."""
     if len(name) <= max_len:
-        return name
+        return name.ljust(max_len)
     stem, _, ext = name.rpartition(".")
     if ext and len(ext) <= 5:
-        # Keep extension: "long_filena…me.pdf"
         available = max_len - len(ext) - 2  # 2 for "…."
         return f"{stem[:available]}….{ext}"
     return name[: max_len - 1] + "…"
@@ -174,7 +176,7 @@ def _make_progress() -> Progress:
     return Progress(
         SpinnerColumn(style="bright_magenta"),
         TextColumn("[bright_cyan]{task.description}[/bright_cyan]"),
-        BarColumn(bar_width=20, complete_style="bright_magenta", finished_style="bright_green"),
+        BarColumn(bar_width=None, complete_style="bright_magenta", finished_style="bright_green"),
         DownloadColumn(binary_units=True),
         TransferSpeedColumn(),
         TimeRemainingColumn(),
@@ -243,7 +245,7 @@ def download_all(
     if progress is not None:
         total_size = sum(file_map[url].size_bytes for url in pending if url in file_map)
         overall_task = progress.add_task(
-            "Overall", total=total_size,
+            "Overall".ljust(_NAME_WIDTH), total=total_size,
             status=f"[cyan]0/{total_pending} files[/cyan]",
         )
         for i in range(workers):
