@@ -273,6 +273,9 @@ def download_all(
     completed_count = 0
     total_pending = len(pending)
     overall_start = time.monotonic()
+    # Thread-to-slot mapping: each thread claims a display slot on first use
+    _thread_slots: dict[int, int] = {}
+    _slot_lock = threading.Lock()
     if progress is not None:
         total_size = sum(file_map[url].size_bytes for url in pending if url in file_map)
         overall_task = progress.add_task(
@@ -284,7 +287,15 @@ def download_all(
             wt = progress.add_task(f"[worker {i}]", total=0, visible=False, status="", elapsed="0s")
             worker_tasks.append(wt)
 
-    def worker(url: str, worker_id: int) -> None:
+    def _get_slot() -> int:
+        """Get the display slot for the current thread. Allocates on first call."""
+        tid = threading.get_ident()
+        with _slot_lock:
+            if tid not in _thread_slots:
+                _thread_slots[tid] = len(_thread_slots)
+            return _thread_slots[tid]
+
+    def worker(url: str, _worker_id: int) -> None:
         if auth_halt.is_set():
             return
 
@@ -294,10 +305,11 @@ def download_all(
 
         state.set_status(url, FileStatus.DOWNLOADING, local_path=local_path)
 
-        # Each worker gets its own dedicated progress task (by worker_id)
+        # Each thread gets its own dedicated progress task slot
         my_task = None
         if progress is not None and worker_tasks:
-            my_task = worker_tasks[worker_id % len(worker_tasks)]
+            slot = _get_slot()
+            my_task = worker_tasks[slot % len(worker_tasks)]
             # Reset: set completed to 0 and total to this file's size; reset elapsed to "0s"
             progress.update(
                 my_task,
@@ -389,6 +401,9 @@ def download_all(
     if progress is not None:
         for wt in worker_tasks:
             progress.update(wt, visible=False)
+    # Clear thread-slot mapping so retry threads get fresh slots
+    with _slot_lock:
+        _thread_slots.clear()
 
     if auth_error:
         raise auth_error[0]
