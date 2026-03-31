@@ -464,18 +464,13 @@ def _interactive_mode_inner() -> None:
     any_auth_expired = any(r["status"] == "AUTH_EXPIRED" for r in batch_results)
     any_failed = any(r["status"] == "FAILED" for r in batch_results)
 
-    if any_auth_expired:
-        raise typer.Exit(code=1)
-
-    if any_failed:
-        raise typer.Exit(code=1)
-
     # Determine if any jobs actually downloaded files
     ok_results = [r for r in batch_results if r["status"] == "OK"]
     total_downloaded = sum(r["files"] for r in batch_results)
 
-    # Save config after at least one successful job
-    if ok_results:
+    # Save config after any download attempt — captures user preferences
+    # (URL, dest, workers) regardless of whether all files succeeded
+    if batch_results:
         try:
             save_config({
                 "sharepoint_url": sharing_url,
@@ -485,6 +480,12 @@ def _interactive_mode_inner() -> None:
             })
         except Exception:
             pass  # Config save is best-effort
+
+    if any_auth_expired:
+        raise typer.Exit(code=1)
+
+    if any_failed:
+        raise typer.Exit(code=1)
 
     # Only show success summary and verify prompt when files were actually downloaded
     if total_downloaded > 0 and ok_results:
