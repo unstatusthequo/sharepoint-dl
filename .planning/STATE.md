@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Feature Expansion
-status: verifying
-stopped_at: Phase 10 context gathered
-last_updated: "2026-03-31T22:19:09.110Z"
-last_activity: 2026-03-30
+status: executing
+stopped_at: Completed 10-02-PLAN.md
+last_updated: "2026-03-31T22:42:58.765Z"
+last_activity: 2026-03-31
 progress:
   total_phases: 4
   completed_phases: 3
-  total_plans: 7
-  completed_plans: 7
+  total_plans: 9
+  completed_plans: 8
 ---
 
 # Project State
@@ -20,14 +20,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-30)
 
 **Core value:** Every file in the shared folder is downloaded, and the user can prove it — no silent failures, no missing files, no guesswork.
-**Current focus:** Phase 09 — batch-and-session-resilience
+**Current focus:** Phase 10 — tui-polish
 
 ## Current Position
 
-Phase: 09
-Plan: Not started
-Status: Phase complete — ready for verification
-Last activity: 2026-03-30
+Phase: 10 (tui-polish) — EXECUTING
+Plan: 2 of 2
+Status: Ready to execute
+Last activity: 2026-03-31
 
 Progress (v1.1): [████████░░] 50%
 
@@ -64,6 +64,7 @@ Progress (v1.1): [████████░░] 50%
 | Phase 09-batch-and-session-resilience P01 | 8min | 2 tasks | 2 files |
 | Phase 09 P02 | 2.5min | 2 tasks | 3 files |
 | Phase 09-batch-and-session-resilience P03 | 10min | 1 tasks | 2 files |
+| Phase 10-tui-polish P02 | 15min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -88,6 +89,8 @@ Recent decisions affecting v1.1 work:
 - [Phase 09]: Retry loop naturally re-downloads auth-expired files after successful reauth (no extra logic needed)
 - [Phase 09]: _job_dest uses timestamp prefix + sanitized folder leaf for unique per-job directory naming
 - [Phase 09]: Session object reused across all batch jobs per D-10 — no re-authentication between jobs
+- [Phase 10-tui-polish]: Store throttle as raw human string in config not parsed bytes — users see original input on reload
+- [Phase 10-tui-polish]: TUI startup menu shows Download/Verify options before sharing URL prompt; verify flow branches early and returns
 
 ### Pending Todos
 
@@ -100,6 +103,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-31T22:19:09.108Z
-Stopped at: Phase 10 context gathered
-Resume file: .planning/phases/10-tui-polish/10-CONTEXT.md
+Last session: 2026-03-31T22:42:58.763Z
+Stopped at: Completed 10-02-PLAN.md
+Resume file: None

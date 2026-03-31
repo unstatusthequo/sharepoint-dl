@@ -122,7 +122,7 @@ Plans:
 - [x] **Phase 7: Zero-Risk UX Wins** - ETA/speed display, timestamped log file, and auto-detect folder from sharing link (completed 2026-03-30)
 - [x] **Phase 8: New Contained Modules** - Config file, bandwidth throttle, and post-download verify command (completed 2026-03-30)
 - [x] **Phase 9: Batch and Session Resilience** - Multi-folder batch download and automatic mid-download session refresh (completed 2026-03-30)
-- [ ] **Phase 10: TUI Polish** - CSV manifest report, TUI-first verify/throttle prompts, per-file elapsed timer
+- [x] **Phase 10: TUI Polish** - CSV manifest report, TUI-first verify/throttle prompts, per-file elapsed timer (completed 2026-03-31)
 
 ## Phase Details
 
@@ -184,8 +184,8 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 10-01-PLAN.md — CSV manifest generation + per-file elapsed timer in progress bars
-- [ ] 10-02-PLAN.md — TUI startup menu (Download/Verify) + interactive throttle prompt
+- [x] 10-01-PLAN.md — CSV manifest generation + per-file elapsed timer in progress bars
+- [x] 10-02-PLAN.md — TUI startup menu (Download/Verify) + interactive throttle prompt
 
 ## Progress
 
@@ -203,4 +203,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 7. Zero-Risk UX Wins | v1.1 | 2/2 | Complete | 2026-03-30 |
 | 8. New Contained Modules | v1.1 | 1/2 | In Progress|  |
 | 9. Batch and Session Resilience | v1.1 | 3/3 | Complete   | 2026-03-30 |
-| 10. TUI Polish | v1.1 | 0/2 | Not started | - |
+| 10. TUI Polish | v1.1 | 2/2 | Complete   | 2026-03-31 |

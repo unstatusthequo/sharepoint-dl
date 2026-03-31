@@ -87,7 +87,7 @@ Deferred to future release. Tracked but not in current roadmap.
 - [x] **UX-02**: User can queue multiple folders for download in a single interactive session
 - [x] **UX-03**: Tool saves default settings (SharePoint URL, destination, workers) to a config file and loads them on startup
 - [x] **UX-04**: Progress display shows estimated time remaining and current download speed
-- [ ] **UX-05**: On startup, TUI offers "Download or Verify?" — verify and throttle are accessible through interactive prompts, not just CLI flags
+- [x] **UX-05**: On startup, TUI offers "Download or Verify?" — verify and throttle are accessible through interactive prompts, not just CLI flags
 - [ ] **UX-06**: Per-file progress bars show elapsed time since that file started downloading, not overall session time
 
 ### Reliability
@@ -150,7 +150,7 @@ Deferred to future release. Tracked but not in current roadmap.
 | FOR-01 | Phase 8 | Complete |
 | UX-02 | Phase 9 | Complete |
 | REL-01 | Phase 9 | Complete |
-| UX-05 | Phase 10 | Pending |
+| UX-05 | Phase 10 | Complete |
 | UX-06 | Phase 10 | Pending |
 | FOR-02 | Phase 10 | Pending |
 
