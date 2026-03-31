@@ -18,6 +18,7 @@ class Config(TypedDict):
     download_dest: str
     workers: int
     flat: bool
+    throttle: str
 
 
 # ---------------------------------------------------------------------------
@@ -32,6 +33,7 @@ DEFAULT_CONFIG: Config = {
     "download_dest": "",
     "workers": 3,
     "flat": False,
+    "throttle": "",
 }
 
 # ---------------------------------------------------------------------------
@@ -90,5 +92,8 @@ def _validate(data: dict) -> Config:  # type: ignore[type-arg]
 
     if isinstance(data.get("flat"), bool):
         result["flat"] = data["flat"]
+
+    if isinstance(data.get("throttle"), str):
+        result["throttle"] = data["throttle"]
 
     return result  # type: ignore[return-value]

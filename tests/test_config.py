@@ -34,6 +34,7 @@ def test_load_config_no_file_returns_defaults(config_dir: Path):
     assert result["download_dest"] == ""
     assert result["workers"] == 3
     assert result["flat"] is False
+    assert result["throttle"] == ""
 
 
 def test_load_config_valid_toml(config_dir: Path):
@@ -90,6 +91,7 @@ def test_save_config_creates_file(config_dir: Path):
         "download_dest": "/data",
         "workers": 4,
         "flat": True,
+        "throttle": "",
     }
     save_config(cfg)
     assert (config_dir / "config.toml").exists()
@@ -108,6 +110,7 @@ def test_save_config_creates_directory(tmp_path: Path, monkeypatch: pytest.Monke
         "download_dest": "",
         "workers": 3,
         "flat": False,
+        "throttle": "",
     }
     save_config(config)
     assert (new_dir / "config.toml").exists()
@@ -124,10 +127,27 @@ def test_save_then_load_roundtrip(config_dir: Path):
         "download_dest": "/Users/me/downloads",
         "workers": 6,
         "flat": True,
+        "throttle": "",
     }
     save_config(original)
     loaded = load_config()
     assert loaded == original
+
+
+def test_throttle_field_roundtrip(config_dir: Path):
+    """throttle field round-trips through save_config/load_config."""
+    from sharepoint_dl.config import Config, load_config, save_config
+
+    original: Config = {
+        "sharepoint_url": "https://contoso.sharepoint.com/sites/docs",
+        "download_dest": "/Users/me/downloads",
+        "workers": 3,
+        "flat": False,
+        "throttle": "5MB",
+    }
+    save_config(original)
+    loaded = load_config()
+    assert loaded["throttle"] == "5MB"
 
 
 # --- merge_config ---
@@ -141,6 +161,7 @@ def test_merge_config_overrides():
         "download_dest": "/base",
         "workers": 2,
         "flat": False,
+        "throttle": "",
     }
     result = merge_config(base, workers=4)
     assert result["workers"] == 4
@@ -157,6 +178,7 @@ def test_merge_config_none_overrides_ignored():
         "download_dest": "/base",
         "workers": 2,
         "flat": False,
+        "throttle": "",
     }
     result = merge_config(base, workers=None, flat=None)
     assert result["workers"] == 2
