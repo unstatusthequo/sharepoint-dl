@@ -656,11 +656,18 @@ def _parse_sharepoint_url(url: str) -> tuple[str, str]:
     shorthand_map = {"s": "sites", "p": "personal"}
 
     # Detect sharing link pattern: /:type:/shorthand/SiteName/...
+    # Format 1 (OTP):  /:f:/s/SiteName/...  → shorthand s = sites
+    # Format 2 (auth): /:f:/r/sites/SiteName/... → r is literal, sites/SiteName follows
     if len(path_parts) >= 3 and path_parts[0].startswith(":") and path_parts[0].endswith(":"):
         shorthand = path_parts[1]
-        site_name = path_parts[2]
-        prefix = shorthand_map.get(shorthand, shorthand)
-        site_url = f"{base}/{prefix}/{site_name}"
+        if shorthand == "r" and len(path_parts) >= 4 and path_parts[2] in ("sites", "personal"):
+            # Format 2: /:f:/r/sites/SiteName/... — r is literal, next two are prefix/name
+            site_url = f"{base}/{path_parts[2]}/{path_parts[3]}"
+        else:
+            # Format 1: /:f:/s/SiteName/... — shorthand maps to prefix
+            site_name = path_parts[2]
+            prefix = shorthand_map.get(shorthand, shorthand)
+            site_url = f"{base}/{prefix}/{site_name}"
         return site_url, ""
 
     # Standard patterns: /sites/{name}/... or /personal/{name}/...
