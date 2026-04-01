@@ -168,38 +168,6 @@ def _interactive_mode_inner() -> None:
 
     os.system("cls" if os.name == "nt" else "clear")
     _print_banner()
-
-    # Startup menu: Download or Verify
-    console.print("    [bright_magenta]1.[/bright_magenta] [bold]Download files[/bold]")
-    console.print("    [bright_magenta]2.[/bright_magenta] [bold]Verify a prior download[/bold]")
-    console.print()
-    menu_choice = Prompt.ask(
-        "  [bright_magenta]>[/bright_magenta] [bold]Choose an option[/bold]",
-        default="1",
-    ).strip()
-
-    if menu_choice == "2":
-        # Verify flow
-        _section_header("01", "VERIFY DOWNLOAD")
-        default_verify_path = cfg["download_dest"] or str(Path.home() / "Downloads" / "sharepoint-dl")
-        verify_path = Prompt.ask(
-            "    [bold]Path to download folder[/bold]",
-            default=default_verify_path,
-        ).strip()
-        verify_dir = Path(verify_path)
-        if not verify_dir.exists():
-            _error(f"Path does not exist: {verify_path}")
-            raise typer.Exit(code=1)
-        if not (verify_dir / "manifest.json").exists():
-            _error(f"No manifest.json found in: {verify_path}")
-            raise typer.Exit(code=1)
-        _section_header("02", "VERIFICATION")
-        try:
-            _run_verify(verify_dir)
-        except Exception as exc:
-            _warn(f"Verification error: {exc}")
-        return
-
     console.print()
 
     # Step 1: Get sharing URL
@@ -366,6 +334,33 @@ def _interactive_mode_inner() -> None:
         total_size = sum(f.size_bytes for f in files)
         _success(f"Found {len(files)} files ({_format_size(total_size)} total)")
 
+        # Check if files span multiple folders
+        unique_folders = {f.folder_path for f in files}
+        has_subfolders = len(unique_folders) > 1
+
+        # Prompt for layout if subfolders exist
+        if has_subfolders:
+            # Check for duplicate filenames that would collide in flat mode
+            from collections import Counter
+            name_counts = Counter(f.name for f in files)
+            dupes = sum(1 for c in name_counts.values() if c > 1)
+
+            console.print()
+            console.print(f"    [bright_yellow]Files span {len(unique_folders)} folders.[/bright_yellow]")
+            if dupes > 0:
+                console.print(f"    [bright_red]Warning: {dupes} filenames appear in multiple folders — flat mode will overwrite duplicates![/bright_red]")
+            console.print(f"    [bright_magenta]1.[/bright_magenta] [bold]Keep source folders[/bold] (recommended) [dim]— preserves original folder structure[/dim]")
+            console.print(f"    [bright_magenta]2.[/bright_magenta] [bold]Flat[/bold] [dim]— all files in one folder{' ⚠ collisions!' if dupes > 0 else ''}[/dim]")
+            layout_choice = Prompt.ask(
+                "    [bold]File layout[/bold]",
+                default="1",
+            ).strip()
+            flat = layout_choice == "2"
+        else:
+            flat = True  # Single folder — flat is fine
+
+        layout_label = "flat (all files in one folder)" if flat else "keep source folders"
+
         # Confirm
         console.print()
         console.print(f"  [dim]{'─' * 44}[/dim]")
@@ -373,7 +368,7 @@ def _interactive_mode_inner() -> None:
         console.print(f"  [bright_cyan]Files:[/bright_cyan]   {len(files)} ({_format_size(total_size)})")
         console.print(f"  [bright_cyan]Dest:[/bright_cyan]    {batch_root}")
         console.print(f"  [bright_cyan]Workers:[/bright_cyan] {workers}")
-        console.print(f"  [bright_cyan]Layout:[/bright_cyan]  flat (all files in one folder)")
+        console.print(f"  [bright_cyan]Layout:[/bright_cyan]  {layout_label}")
         console.print(f"  [dim]{'─' * 44}[/dim]")
         console.print()
 
@@ -397,8 +392,8 @@ def _interactive_mode_inner() -> None:
         dl_logger.info("Session validated for %s", site_url)
         dl_logger.info("Enumerated %d files (%s total)", len(files), _format_size(total_size))
         dl_logger.info(
-            "Starting download: %d files, %d workers, dest=%s, files=%s, flat=True",
-            len(files), workers, batch_root, job_files_dir,
+            "Starting download: %d files, %d workers, dest=%s, files=%s, flat=%s",
+            len(files), workers, batch_root, job_files_dir, flat,
         )
 
         start_time = time.time()
@@ -418,7 +413,7 @@ def _interactive_mode_inner() -> None:
             with progress:
                 completed, failed = download_all(
                     session, files, batch_root, site_url,
-                    workers=workers, progress=progress, flat=True,
+                    workers=workers, progress=progress, flat=flat,
                     on_auth_expired=reauth.trigger,
                     files_dir=job_files_dir,
                     throttle=throttle_bucket,
@@ -447,7 +442,7 @@ def _interactive_mode_inner() -> None:
         # Manifest (even on cancel -- captures what completed so far)
         manifest_path = None
         if state is not None and completed:
-            manifest_path = generate_manifest(state, batch_root, sharing_url, server_relative_path, flat=True)
+            manifest_path = generate_manifest(state, batch_root, sharing_url, server_relative_path, flat=flat)
             if manifest_path:
                 dl_logger.info("Manifest written: %s", manifest_path)
 
@@ -581,7 +576,7 @@ def _interactive_mode_inner() -> None:
                 "sharepoint_url": sharing_url,
                 "download_dest": str(batch_root),
                 "workers": workers,
-                "flat": True,
+                "flat": flat,
                 "throttle": throttle_input,
             })
         except Exception as exc:
