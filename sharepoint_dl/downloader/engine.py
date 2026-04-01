@@ -259,10 +259,14 @@ def download_all(
     state.cleanup_interrupted(dest_dir, files_dir=actual_files_dir)
 
     file_map = {f.server_relative_url: f for f in files}
+    current_urls = set(file_map.keys())
     pending = state.pending_files()
 
     if not pending:
-        return state.complete_files(), state.failed_files()
+        # Filter to only files from this enumeration (state may have entries from prior runs)
+        completed = [u for u in state.complete_files() if u in current_urls]
+        failed = [(u, r) for u, r in state.failed_files() if u in current_urls]
+        return completed, failed
 
     auth_halt = threading.Event()
     auth_error: list[AuthExpiredError] = []
@@ -467,7 +471,10 @@ def download_all(
             elapsed=overall_elapsed,
         )
 
-    return state.complete_files(), state.failed_files()
+    # Filter to only files from this enumeration (state may have entries from prior runs)
+    completed = [u for u in state.complete_files() if u in current_urls]
+    failed = [(u, r) for u, r in state.failed_files() if u in current_urls]
+    return completed, failed
 
 
 def _local_path(files_dir: Path, file_entry: FileEntry, flat: bool = False) -> Path:
