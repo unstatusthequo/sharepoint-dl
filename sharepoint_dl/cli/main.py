@@ -1116,6 +1116,7 @@ def download(
             "download_dest": str(dest),
             "workers": workers,
             "flat": flat,
+            "throttle": throttle_str or "",
         })
     except Exception:
         pass  # Config save is best-effort; don't fail the download
