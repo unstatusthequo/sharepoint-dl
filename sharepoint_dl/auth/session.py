@@ -75,7 +75,9 @@ def build_session(session_path: Path, sharepoint_host: str) -> requests.Session:
 
     for cookie in data.get("cookies", []):
         domain = cookie.get("domain", "")
-        if sharepoint_host in domain:
+        # Include cookies that match the host directly OR are parent-domain
+        # cookies (e.g. .sharepoint.com applies to cicerotech.sharepoint.com)
+        if sharepoint_host in domain or (domain.startswith(".") and sharepoint_host.endswith(domain.lstrip("."))):
             session.cookies.set(
                 cookie["name"],
                 cookie["value"],
