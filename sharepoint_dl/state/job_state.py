@@ -11,6 +11,15 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from sharepoint_dl.enumerator.traversal import FileEntry
 
+_SHAREPOINT_METADATA_KEYS = (
+    "sharepoint_created_at",
+    "sharepoint_modified_at",
+    "sharepoint_created_by",
+    "sharepoint_created_by_email",
+    "sharepoint_modified_by",
+    "sharepoint_modified_by_email",
+)
+
 
 class FileStatus(str, Enum):
     """Lifecycle status for a tracked file."""
@@ -114,12 +123,18 @@ class JobState:
                         "name": f.name,
                         "size_bytes": f.size_bytes,
                         "folder_path": f.folder_path,
+                        **_sharepoint_metadata(f),
                         "status": FileStatus.PENDING,
                         "local_path": None,
                         "sha256": None,
                         "error": None,
                         "downloaded_at": None,
                     }
+                else:
+                    existing = self._data[key]
+                    for meta_key, meta_value in _sharepoint_metadata(f).items():
+                        if meta_value and not existing.get(meta_key):
+                            existing[meta_key] = meta_value
             self._save()
 
     def set_status(self, server_relative_url: str, status: FileStatus, **kwargs) -> None:
@@ -200,3 +215,10 @@ class JobState:
         """Return the state dict for a file, or None if not tracked."""
         with self._lock:
             return self._data.get(server_relative_url)
+
+
+def _sharepoint_metadata(file_entry: "FileEntry") -> dict[str, str | None]:
+    return {
+        key: getattr(file_entry, key)
+        for key in _SHAREPOINT_METADATA_KEYS
+    }

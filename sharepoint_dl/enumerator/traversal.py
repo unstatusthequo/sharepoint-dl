@@ -32,6 +32,22 @@ class FileEntry:
     server_relative_url: str
     size_bytes: int
     folder_path: str
+    sharepoint_created_at: str | None = None
+    sharepoint_modified_at: str | None = None
+    sharepoint_created_by: str | None = None
+    sharepoint_created_by_email: str | None = None
+    sharepoint_modified_by: str | None = None
+    sharepoint_modified_by_email: str | None = None
+
+
+def _user_field(item: dict, field: str, key: str) -> str | None:
+    """Extract a SharePoint user field from expanded REST data."""
+    user = item.get(field)
+    if not isinstance(user, dict):
+        return None
+    variants = (key, key.upper(), key.lower(), "EMail" if key.lower() == "email" else key)
+    value = next((user.get(variant) for variant in variants if user.get(variant)), None)
+    return str(value) if value else None
 
 
 @retry(
@@ -102,7 +118,11 @@ def enumerate_files(
         # Fetch files in this folder (with pagination)
         files_url = (
             f"{site_url}/_api/web/GetFolderByServerRelativeUrl('{encoded}')"
-            f"/Files?$select=Name,ServerRelativeUrl,Length"
+            "/Files?"
+            "$select=Name,ServerRelativeUrl,Length,TimeCreated,TimeLastModified,"
+            "Author/Title,Author/Email,Author/EMail,"
+            "ModifiedBy/Title,ModifiedBy/Email,ModifiedBy/EMail"
+            "&$expand=Author,ModifiedBy"
         )
         next_url: str | None = files_url
         while next_url:
@@ -114,6 +134,12 @@ def enumerate_files(
                         server_relative_url=item["ServerRelativeUrl"],
                         size_bytes=int(item.get("Length", 0)),
                         folder_path=folder_path,
+                        sharepoint_created_at=item.get("TimeCreated"),
+                        sharepoint_modified_at=item.get("TimeLastModified"),
+                        sharepoint_created_by=_user_field(item, "Author", "Title"),
+                        sharepoint_created_by_email=_user_field(item, "Author", "Email"),
+                        sharepoint_modified_by=_user_field(item, "ModifiedBy", "Title"),
+                        sharepoint_modified_by_email=_user_field(item, "ModifiedBy", "Email"),
                     )
                 )
 

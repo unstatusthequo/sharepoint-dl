@@ -1,13 +1,12 @@
 """Tests for sharepoint_dl.enumerator.traversal — file enumeration with pagination."""
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 import requests
 
 from sharepoint_dl.enumerator.traversal import (
     AuthExpiredError,
-    FileEntry,
     enumerate_files,
 )
 
@@ -258,3 +257,43 @@ class TestUrlEncoding:
         first_url = calls[0][0][0]
         assert "My%20Documents" in first_url
         assert "My Documents" not in first_url
+
+
+class TestSharePointMetadata:
+    """enumerate_files preserves SharePoint file metadata for manifests."""
+
+    def test_file_metadata_is_captured(self):
+        session = MagicMock(spec=requests.Session)
+
+        files = _make_files_response([
+            {
+                "Name": "report.xlsx",
+                "ServerRelativeUrl": "/sites/shared/Images/report.xlsx",
+                "Length": "123",
+                "TimeCreated": "2026-01-14T09:15:00Z",
+                "TimeLastModified": "2026-01-15T10:30:00Z",
+                "Author": {"Title": "Alice Creator", "Email": "alice@example.com"},
+                "ModifiedBy": {"Title": "Bob Uploader", "Email": "bob@example.com"},
+            },
+        ])
+        folders = _make_folders_response([])
+
+        def side_effect(url, **kwargs):
+            if "Files" in url:
+                return _mock_response(json_data=files)
+            if "Folders" in url:
+                return _mock_response(json_data=folders)
+            return _mock_response(json_data=_make_files_response([]))
+
+        session.get.side_effect = side_effect
+
+        result = enumerate_files(session, SITE_URL, ROOT_PATH)
+
+        assert len(result) == 1
+        entry = result[0]
+        assert entry.sharepoint_created_at == "2026-01-14T09:15:00Z"
+        assert entry.sharepoint_modified_at == "2026-01-15T10:30:00Z"
+        assert entry.sharepoint_created_by == "Alice Creator"
+        assert entry.sharepoint_created_by_email == "alice@example.com"
+        assert entry.sharepoint_modified_by == "Bob Uploader"
+        assert entry.sharepoint_modified_by_email == "bob@example.com"

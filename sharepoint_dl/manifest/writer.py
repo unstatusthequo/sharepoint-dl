@@ -55,17 +55,7 @@ def generate_manifest(
 
     # Build files list (complete only), sorted by server_relative_url
     files_list = sorted(
-        [
-            {
-                "name": entry["name"],
-                "server_relative_url": url,
-                "local_path": entry.get("local_path") or entry_local_relative_path(entry, flat=flat),
-                "size_bytes": entry["size_bytes"],
-                "sha256": entry["sha256"],
-                "downloaded_at": entry["downloaded_at"],
-            }
-            for url, entry in complete
-        ],
+        [_manifest_file_entry(dest_dir, url, entry, flat=flat) for url, entry in complete],
         key=lambda f: f["server_relative_url"],
     )
 
@@ -76,6 +66,7 @@ def generate_manifest(
                 "name": entry["name"],
                 "server_relative_url": url,
                 "error": entry.get("error", "unknown"),
+                **_sharepoint_metadata(entry),
             }
             for url, entry in failed
         ],
@@ -108,7 +99,49 @@ def generate_manifest(
     return manifest_path
 
 
-_CSV_COLUMNS = ["filename", "local_path", "size_bytes", "sha256", "status", "error", "downloaded_at"]
+_CSV_COLUMNS = [
+    "filename",
+    "server_relative_url",
+    "local_path",
+    "absolute_local_path",
+    "size_bytes",
+    "sha256",
+    "status",
+    "error",
+    "downloaded_at",
+    "sharepoint_created_at",
+    "sharepoint_modified_at",
+    "sharepoint_created_by",
+    "sharepoint_created_by_email",
+    "sharepoint_modified_by",
+    "sharepoint_modified_by_email",
+]
+
+
+def _sharepoint_metadata(entry: dict) -> dict[str, str | None]:
+    return {
+        "sharepoint_created_at": entry.get("sharepoint_created_at"),
+        "sharepoint_modified_at": entry.get("sharepoint_modified_at"),
+        "sharepoint_created_by": entry.get("sharepoint_created_by"),
+        "sharepoint_created_by_email": entry.get("sharepoint_created_by_email"),
+        "sharepoint_modified_by": entry.get("sharepoint_modified_by"),
+        "sharepoint_modified_by_email": entry.get("sharepoint_modified_by_email"),
+    }
+
+
+def _manifest_file_entry(dest_dir: Path, url: str, entry: dict, *, flat: bool) -> dict:
+    local_path = entry.get("local_path") or entry_local_relative_path(entry, flat=flat)
+    absolute_local_path = str((dest_dir / local_path).resolve()) if local_path else None
+    return {
+        "name": entry["name"],
+        "server_relative_url": url,
+        "local_path": local_path,
+        "absolute_local_path": absolute_local_path,
+        "size_bytes": entry["size_bytes"],
+        "sha256": entry["sha256"],
+        "downloaded_at": entry["downloaded_at"],
+        **_sharepoint_metadata(entry),
+    }
 
 
 def _write_manifest_csv(
@@ -133,24 +166,30 @@ def _write_manifest_csv(
     for f in files_list:
         rows.append({
             "filename": f["name"],
+            "server_relative_url": f["server_relative_url"],
             "local_path": f.get("local_path", ""),
+            "absolute_local_path": f.get("absolute_local_path", ""),
             "size_bytes": str(f["size_bytes"]),
             "sha256": f.get("sha256", ""),
             "status": "COMPLETE",
             "error": "",
             "downloaded_at": f.get("downloaded_at", ""),
+            **_sharepoint_metadata(f),
             "_sort_key": f["server_relative_url"],
         })
 
     for f in failed_list:
         rows.append({
             "filename": f["name"],
+            "server_relative_url": f["server_relative_url"],
             "local_path": "",
+            "absolute_local_path": "",
             "size_bytes": "0",
             "sha256": "",
             "status": "FAILED",
             "error": f.get("error", ""),
             "downloaded_at": "",
+            **_sharepoint_metadata(f),
             "_sort_key": f["server_relative_url"],
         })
 

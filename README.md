@@ -9,17 +9,22 @@ Authenticates via browser (OTP email codes or SSO login), lets you browse and se
 - **Interactive TUI** -- Just run it, paste a link, browse folders, download. No flags to memorize.
 - **Browser-based auth** -- Playwright opens Chromium, you log in, session is cached for reuse
 - **Both SharePoint link types** -- OTP sharing links (`/:f:/s/`) and authenticated SSO links (`/:f:/r/`)
+- **Document-library URLs** -- Handles copied browser URLs such as `Forms/AllItems.aspx`, `RootFolder=...`, and nested site/library paths
 - **Folder browser** -- Navigate the SharePoint folder tree interactively to pick your target
+- **Empty-folder recovery** -- If a selected folder contains no files, paste another folder URL or return to the shared root without restarting
 - **Folder layout choice** -- Keep source folder structure (recommended) or flat. Warns about filename collisions.
 - **Streaming downloads** -- 8 MB chunks handle 2 GB+ files without memory issues
 - **SHA-256 hashes** -- Computed during download (single I/O pass, no re-read)
 - **Resume on re-run** -- Completed files are skipped, failed files auto-retried (2 extra rounds)
-- **Forensic manifests** -- `manifest.json` + `manifest.csv` with per-file path, size, hash, and timestamp
+- **Forensic manifests** -- `manifest.json` + `manifest.csv` with per-file paths, size, hash, SharePoint metadata, and timestamps
+- **SharePoint metadata** -- Captures created/modified timestamps, created by, and modified by when SharePoint returns them
+- **Local modified dates** -- Applies SharePoint modified time to downloaded files when available
 - **Completeness report** -- Expected vs downloaded vs failed count after every run
 - **Post-download verification** -- `verify` command re-hashes files on disk and compares to manifest
 - **Concurrent downloads** -- 1-8 parallel workers (default 3) with per-file progress bars, ETA, and speed
 - **Bandwidth throttle** -- Limit download speed (e.g. `5MB`) to avoid saturating the network
 - **Batch mode** -- Queue multiple folders for download in one session without re-authenticating
+- **Path-paste cleanup** -- Pasted shell quotes and escaped spaces are normalized for destination paths
 - **Auto re-auth** -- If session expires mid-download, browser opens automatically to re-authenticate. Workers pause and resume.
 - **Config persistence** -- Saves your preferences (URL, destination, workers, throttle) across sessions
 - **Graceful cancel** -- Ctrl+C saves progress, re-run picks up where you left off
@@ -48,7 +53,7 @@ That's it. `run.sh` handles everything: installs uv if missing, creates the virt
 6. Download runs with per-file progress bars showing speed, ETA, and elapsed time
 7. After download: `manifest.json`, `manifest.csv`, `download.log`, and `state.json` in the destination folder
 8. Downloaded files go into a timestamped subdirectory (e.g. `2026-03-31_143000/`)
-9. Optionally verify downloaded files against their SHA-256 hashes
+9. Optionally verify the current download against its SHA-256 hashes
 10. Queue another folder for batch download, or exit
 
 ```
@@ -111,16 +116,30 @@ your-download-folder/
     └── ...
 ```
 
+## Supported SharePoint URLs
+
+SPDL can resolve several common SharePoint URL shapes:
+
+```text
+https://company.sharepoint.com/:f:/s/SiteName/...
+https://company.sharepoint.com/:f:/r/sites/SiteName/Shared%20Documents/Folder
+https://company.sharepoint.com/sites/SiteName/Shared%20Documents/Forms/AllItems.aspx
+https://company.sharepoint.com/sites/Parent/Subsite/Library/Forms/AllItems.aspx
+https://company.sharepoint.com/sites/SiteName/Shared%20Documents/Forms/AllItems.aspx?RootFolder=...
+```
+
+For document-library view URLs, SPDL derives both the SharePoint REST site URL and the server-relative folder path. That matters for nested sites where the library path can contain folders and files mixed under a site such as `/sites/Parent/Subsite/Library`.
+
 ### manifest.csv
 
 Opens directly in Excel or Google Sheets. Columns:
 
-| filename | local_path | size_bytes | sha256 | status | error | downloaded_at |
-|----------|------------|------------|--------|--------|-------|---------------|
-| report.pdf | 2026-03-31/report.pdf | 445013 | a1b2c3... | COMPLETE | | 2026-03-31T... |
-| broken.zip | | 0 | | FAILED | Size mismatch | |
+| filename | server_relative_url | local_path | absolute_local_path | size_bytes | sha256 | status | error | downloaded_at | sharepoint_created_at | sharepoint_modified_at | sharepoint_created_by | sharepoint_created_by_email | sharepoint_modified_by | sharepoint_modified_by_email |
+|----------|---------------------|------------|---------------------|------------|--------|--------|-------|---------------|-----------------------|------------------------|----------------------|-----------------------------|------------------------|-------------------------------|
+| report.pdf | /sites/shared/Docs/report.pdf | 2026-03-31/report.pdf | /Users/me/Downloads/SPDL/2026-03-31/report.pdf | 445013 | a1b2c3... | COMPLETE | | 2026-03-31T... | 2026-01-14T... | 2026-01-15T... | Alice Creator | alice@example.com | Bob Uploader | bob@example.com |
+| broken.zip | /sites/shared/Docs/broken.zip | | | 0 | | FAILED | Size mismatch | | | | | | | |
 
-Full SHA-256 hashes (not truncated) for forensic chain-of-custody documentation.
+Full SHA-256 hashes are written to the real CSV and JSON manifests. The SharePoint created timestamp is recorded in the manifests; the local filesystem modified time is set from SharePoint modified time when available. Local created time is not reliably portable across platforms, so it is preserved in the metadata report rather than forced onto the filesystem.
 
 ## CLI Mode (Advanced)
 
@@ -171,6 +190,8 @@ Re-reads every file from disk, recomputes SHA-256, and compares against `manifes
 | Browser closes before login | Complete the full login flow (email + OTP code, or SSO) |
 | Playwright driver error | `run.sh` auto-repairs this. Or: `rm -rf .venv && ./run.sh` |
 | `Ctrl+C` during download | Progress is saved. Re-run to resume |
+| Browser URL resolves to no files | Paste a child folder URL at the recovery prompt, or type `root` to return to the shared root |
+| Destination path has quotes or escaped spaces | Paste it normally; SPDL normalizes shell-style quotes and escaped spaces |
 
 ## Requirements
 

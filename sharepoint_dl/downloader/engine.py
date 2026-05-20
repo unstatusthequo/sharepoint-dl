@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import os
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -32,7 +33,12 @@ from tenacity import (
 from tenacity.wait import wait_base
 
 from sharepoint_dl.enumerator.traversal import AuthExpiredError, FileEntry
-from sharepoint_dl.state.job_state import FileStatus, JobState, derive_local_relative_path
+from sharepoint_dl.state.job_state import (
+    FileStatus,
+    JobState,
+    derive_local_relative_path,
+    entry_local_relative_path,
+)
 
 if TYPE_CHECKING:
     from sharepoint_dl.downloader.throttle import TokenBucket
@@ -40,6 +46,47 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 CHUNK_SIZE = 8_388_608  # 8 MB
+
+
+def _parse_sharepoint_timestamp(value: str | None) -> float | None:
+    """Parse a SharePoint ISO timestamp into seconds since epoch."""
+    if not value:
+        return None
+    try:
+        normalized = value.replace("Z", "+00:00")
+        return datetime.fromisoformat(normalized).timestamp()
+    except ValueError:
+        logger.warning("Could not parse SharePoint timestamp: %s", value)
+        return None
+
+
+def _apply_sharepoint_file_times(path: Path, file_entry: FileEntry) -> None:
+    """Apply filesystem timestamps that can be represented portably."""
+    modified = _parse_sharepoint_timestamp(file_entry.sharepoint_modified_at)
+    if modified is None:
+        return
+    os.utime(path, (modified, modified))
+
+
+def _apply_completed_sharepoint_file_times(
+    state: JobState,
+    dest_dir: Path,
+    files_dir: Path,
+    file_map: dict[str, FileEntry],
+    *,
+    flat: bool,
+) -> None:
+    """Apply SharePoint mtimes to completed files when resuming without downloads."""
+    entries = state.all_entries()
+    for url, file_entry in file_map.items():
+        state_entry = entries.get(url)
+        if state_entry is None or state_entry.get("status") != FileStatus.COMPLETE:
+            continue
+
+        local_path = entry_local_relative_path(state_entry, flat=flat)
+        path = dest_dir / local_path if local_path else _local_path(files_dir, file_entry, flat=flat)
+        if path.exists():
+            _apply_sharepoint_file_times(path, file_entry)
 
 
 def _format_size_bytes(size_bytes: int) -> str:
@@ -162,6 +209,7 @@ def _download_file(
         )
 
     part_path.rename(dest_path)
+    _apply_sharepoint_file_times(dest_path, file_entry)
     return sha256.hexdigest()
 
 
@@ -264,6 +312,13 @@ def download_all(
 
     if not pending:
         # Filter to only files from this enumeration (state may have entries from prior runs)
+        _apply_completed_sharepoint_file_times(
+            state,
+            dest_dir,
+            actual_files_dir,
+            file_map,
+            flat=flat,
+        )
         completed = [u for u in state.complete_files() if u in current_urls]
         failed = [(u, r) for u, r in state.failed_files() if u in current_urls]
         return completed, failed

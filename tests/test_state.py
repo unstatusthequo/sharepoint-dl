@@ -89,6 +89,35 @@ class TestResume:
         pending = state.pending_files()
         assert file_entries[2].server_relative_url in pending
 
+    def test_initialize_backfills_metadata_without_resetting_status(self, tmp_path: Path):
+        old_entry = FileEntry(
+            name="report.xlsx",
+            server_relative_url="/sites/shared/Images/report.xlsx",
+            size_bytes=123,
+            folder_path="/sites/shared/Images",
+        )
+        updated_entry = FileEntry(
+            name="report.xlsx",
+            server_relative_url="/sites/shared/Images/report.xlsx",
+            size_bytes=123,
+            folder_path="/sites/shared/Images",
+            sharepoint_modified_at="2026-01-15T10:30:00Z",
+            sharepoint_modified_by="Bob Uploader",
+            sharepoint_modified_by_email="bob@example.com",
+        )
+        state = JobState(tmp_path)
+        state.initialize([old_entry])
+        state.set_status(old_entry.server_relative_url, FileStatus.COMPLETE, sha256="abc123")
+
+        state.initialize([updated_entry])
+
+        entry = state.get_entry(old_entry.server_relative_url)
+        assert entry["status"] == FileStatus.COMPLETE
+        assert entry["sha256"] == "abc123"
+        assert entry["sharepoint_modified_at"] == "2026-01-15T10:30:00Z"
+        assert entry["sharepoint_modified_by"] == "Bob Uploader"
+        assert entry["sharepoint_modified_by_email"] == "bob@example.com"
+
 
 class TestPartCleanup:
     """cleanup_interrupted() deletes .part files and resets status to pending."""

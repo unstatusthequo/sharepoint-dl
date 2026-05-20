@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import time
+import os
+import shlex
 from collections import defaultdict
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import unquote, urlparse
 
 import requests as _requests
 import typer
@@ -33,6 +35,30 @@ app = typer.Typer(
 )
 
 console = Console()
+
+
+def _normalize_path_input(value: str | Path) -> Path:
+    """Return a Path from shell-style pasted input.
+
+    Interactive prompts receive quotes as literal characters, unlike a shell.
+    Treat one shell token as syntax-normalized input, but preserve raw prompt
+    text when unquoted spaces are present.
+    """
+    raw = str(value).strip()
+    if not raw:
+        return Path(raw)
+
+    try:
+        tokens = shlex.split(raw)
+    except ValueError:
+        tokens = []
+
+    if len(tokens) == 1:
+        raw = tokens[0]
+    elif len(raw) >= 2 and raw[0] == raw[-1] and raw[0] in ("'", '"'):
+        raw = raw[1:-1]
+
+    return Path(os.path.expandvars(os.path.expanduser(raw)))
 
 
 
@@ -217,7 +243,7 @@ def _interactive_mode_inner() -> None:
         "    [bold]Download destination[/bold]",
         default=default_dest,
     ).strip()
-    batch_root = Path(dest_str)
+    batch_root = _normalize_path_input(dest_str)
 
     workers = IntPrompt.ask(
         "    [bold]Parallel workers[/bold] (1-8)",
@@ -284,7 +310,7 @@ def _interactive_mode_inner() -> None:
                         f"    [bright_magenta]{i:>3}.[/bright_magenta] [bright_cyan]{sf['name']}[/bright_cyan]"
                     )
                 console.print(
-                    f"    [bright_yellow]  0.[/bright_yellow] [bold bright_green]>> DOWNLOAD THIS FOLDER <<[/bold bright_green]"
+                    "    [bright_yellow]  0.[/bright_yellow] [bold bright_green]>> DOWNLOAD THIS FOLDER <<[/bold bright_green]"
                 )
                 console.print()
 
@@ -329,7 +355,23 @@ def _interactive_mode_inner() -> None:
 
         if not files:
             _warn("No files found in that folder.")
-            raise typer.Exit(code=0)
+            retry = Prompt.ask(
+                "    [bold]Paste another folder URL, type 'root', or press Enter to skip[/bold]",
+                default="skip",
+            ).strip()
+            if retry.lower() in ("", "skip"):
+                raise typer.Exit(code=0)
+            if retry.lower() == "root":
+                current_path = root_path
+                continue
+
+            resolved = resolve_folder_from_browser_url(retry)
+            if resolved is None:
+                _error("Could not extract folder path from that URL.")
+                current_path = None
+            else:
+                current_path = resolved
+            continue
 
         total_size = sum(f.size_bytes for f in files)
         _success(f"Found {len(files)} files ({_format_size(total_size)} total)")
@@ -349,7 +391,7 @@ def _interactive_mode_inner() -> None:
             console.print(f"    [bright_yellow]Files span {len(unique_folders)} folders.[/bright_yellow]")
             if dupes > 0:
                 console.print(f"    [bright_red]Warning: {dupes} filenames appear in multiple folders — flat mode will overwrite duplicates![/bright_red]")
-            console.print(f"    [bright_magenta]1.[/bright_magenta] [bold]Keep source folders[/bold] (recommended) [dim]— preserves original folder structure[/dim]")
+            console.print("    [bright_magenta]1.[/bright_magenta] [bold]Keep source folders[/bold] (recommended) [dim]— preserves original folder structure[/dim]")
             console.print(f"    [bright_magenta]2.[/bright_magenta] [bold]Flat[/bold] [dim]— all files in one folder{' ⚠ collisions!' if dupes > 0 else ''}[/dim]")
             layout_choice = Prompt.ask(
                 "    [bold]File layout[/bold]",
@@ -491,14 +533,14 @@ def _interactive_mode_inner() -> None:
 
         console.print()
         console.print(f"  [dim]{'═' * 44}[/dim]")
-        console.print(f"  [bold bright_cyan]COMPLETENESS REPORT[/bold bright_cyan]")
+        console.print("  [bold bright_cyan]COMPLETENESS REPORT[/bold bright_cyan]")
         console.print(f"  [dim]{'─' * 44}[/dim]")
         console.print(f"  [bright_cyan]Expected:[/bright_cyan]   {len(files)}")
         console.print(f"  [bright_green]Downloaded:[/bright_green] {len(completed)}")
         if failed:
             console.print(f"  [bright_red]Failed:[/bright_red]     {len(failed)}")
         else:
-            console.print(f"  [dim]Failed:[/dim]     0")
+            console.print("  [dim]Failed:[/dim]     0")
         console.print(f"  [bright_cyan]Status:[/bright_cyan]     {status_text}")
 
         if manifest_path:
@@ -530,6 +572,13 @@ def _interactive_mode_inner() -> None:
                 "\n  [bright_red]Session expired. Re-run to resume — completed files skipped.[/bright_red]"
             )
             raise typer.Exit(code=1)
+
+        if job_status == "OK" and Confirm.ask("  [bold]Verify downloaded files?[/bold]", default=False):
+            _section_header("06", "VERIFICATION")
+            try:
+                _run_verify(batch_root)
+            except Exception as exc:
+                _warn(f"Verification error: {exc}")
 
         # Offer to queue another folder
         console.print()
@@ -596,14 +645,6 @@ def _interactive_mode_inner() -> None:
             f"in {last_ok['elapsed']:.1f}s"
         )
 
-    # Offer post-download verification only on clean completion
-    if ok_results and not any_failed and not any_auth_expired and Confirm.ask("  [bold]Verify downloaded files?[/bold]", default=False):
-        _section_header("06", "VERIFICATION")
-        try:
-            _run_verify(batch_root)
-        except Exception as exc:
-            _warn(f"Verification error: {exc}")
-
 
 def _job_dest(batch_root: Path) -> Path:
     """Create a timestamped subdirectory for a download job.
@@ -645,6 +686,7 @@ def _parse_sharepoint_url(url: str) -> tuple[str, str]:
     parsed = urlparse(url)
     base = f"{parsed.scheme}://{parsed.netloc}"
     path_parts = parsed.path.strip("/").split("/")
+    decoded_path_parts = [unquote(part) for part in path_parts]
 
     # SharePoint sharing links use /:f:/s/SiteName/... or /:f:/r/sites/SiteName/...
     # The /s/ is shorthand for /sites/, /p/ for /personal/
@@ -664,6 +706,21 @@ def _parse_sharepoint_url(url: str) -> tuple[str, str]:
             prefix = shorthand_map.get(shorthand, shorthand)
             site_url = f"{base}/{prefix}/{site_name}"
         return site_url, ""
+
+    # Document library view URL:
+    # /sites/Site/Subsite/Library/Forms/AllItems.aspx
+    # The REST web URL is the parent of the library root, while the
+    # server-relative path is the library root itself.
+    if "Forms" in decoded_path_parts:
+        forms_index = decoded_path_parts.index("Forms")
+        if (
+            forms_index >= 3
+            and forms_index + 1 < len(decoded_path_parts)
+            and decoded_path_parts[forms_index + 1].endswith(".aspx")
+        ):
+            site_path = "/".join(decoded_path_parts[: forms_index - 1])
+            library_path = "/".join(decoded_path_parts[:forms_index])
+            return f"{base}/{site_path}", f"/{library_path}"
 
     # Standard patterns: /sites/{name}/... or /personal/{name}/...
     if len(path_parts) >= 2 and path_parts[0] in ("sites", "personal"):
@@ -701,6 +758,8 @@ def verify(
     dest: Path = typer.Argument(..., help="Download destination directory containing manifest.json"),
 ) -> None:
     """Verify downloaded files against their manifest SHA-256 hashes."""
+    dest = _normalize_path_input(dest)
+
     from rich.progress import BarColumn, DownloadColumn, Progress, SpinnerColumn, TextColumn
     from rich.table import Table
 
@@ -898,6 +957,8 @@ def download(
     ),
 ) -> None:
     """Download all files from a SharePoint folder."""
+    dest = _normalize_path_input(dest)
+
     # Load config to pre-fill defaults
     cfg = load_config()
 

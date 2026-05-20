@@ -6,20 +6,19 @@ import hashlib
 import json
 import threading
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 import requests
 
 from sharepoint_dl.downloader.engine import (
-    CHUNK_SIZE,
     _build_download_url,
     _download_file,
     _make_progress,
     download_all,
 )
 from sharepoint_dl.enumerator.traversal import AuthExpiredError, FileEntry
-from sharepoint_dl.state.job_state import FileStatus
+from sharepoint_dl.state.job_state import FileStatus, JobState
 
 
 @pytest.fixture
@@ -61,6 +60,26 @@ class TestStreaming:
         assert dest.exists()
         assert dest.read_bytes() == content
         assert not dest.with_suffix(dest.suffix + ".part").exists()
+
+    def test_sets_local_modified_time_from_sharepoint_metadata(
+        self,
+        tmp_path: Path,
+        sample_entry: FileEntry,
+        site_url: str,
+    ):
+        content = b"A" * 24
+        sample_entry.sharepoint_modified_at = "2026-01-15T10:30:00Z"
+        session = MagicMock()
+        resp = MagicMock()
+        resp.status_code = 200
+        resp.iter_content = MagicMock(return_value=iter([content]))
+        resp.raise_for_status = MagicMock()
+        session.get.return_value = resp
+
+        dest = tmp_path / "evidence_001.E01"
+        _download_file(session, sample_entry, dest, site_url)
+
+        assert int(dest.stat().st_mtime) == 1768473000
 
     def test_content_matches_chunks(
         self,
@@ -237,7 +256,7 @@ class TestRetryAfter:
         session.get.side_effect = [resp_429, resp_200]
 
         dest = tmp_path / "evidence_001.E01"
-        sha = _download_file(session, sample_entry, dest, site_url)
+        _download_file(session, sample_entry, dest, site_url)
 
         assert dest.exists()
         assert session.get.call_count == 2
@@ -306,14 +325,11 @@ class TestPerFileElapsedTimer:
 
     def test_worker_elapsed_resets_when_picking_up_new_file(self, tmp_path: Path):
         """Test 4: When a worker picks up a new file, its elapsed timer resets to 0."""
-        import time
         from rich.progress import Progress
 
         entries = _make_test_entries(2)
 
         elapsed_values_seen = []
-
-        original_update = None
 
         def mock_get(url, **kwargs):
             resp = MagicMock()
@@ -436,6 +452,47 @@ class TestConcurrency:
 
         assert len(completed) == 3
         assert len(failed) == 0
+
+    def test_completed_resume_applies_sharepoint_modified_time(self, tmp_path: Path):
+        entry = FileEntry(
+            name="done.dat",
+            server_relative_url="/sites/shared/Docs/done.dat",
+            size_bytes=4,
+            folder_path="/sites/shared/Docs",
+        )
+        updated_entry = FileEntry(
+            name="done.dat",
+            server_relative_url="/sites/shared/Docs/done.dat",
+            size_bytes=4,
+            folder_path="/sites/shared/Docs",
+            sharepoint_modified_at="2026-01-15T10:30:00Z",
+        )
+        state = JobState(tmp_path)
+        state.initialize([entry])
+        local_path = "files/Docs/done.dat"
+        dest = tmp_path / local_path
+        dest.parent.mkdir(parents=True)
+        dest.write_bytes(b"done")
+        state.set_status(
+            entry.server_relative_url,
+            FileStatus.COMPLETE,
+            local_path=local_path,
+            sha256="abc123",
+        )
+
+        session = MagicMock()
+        completed, failed = download_all(
+            session,
+            [updated_entry],
+            tmp_path,
+            "https://contoso.sharepoint.com/sites/shared",
+            workers=1,
+        )
+
+        assert completed == [entry.server_relative_url]
+        assert failed == []
+        session.get.assert_not_called()
+        assert int(dest.stat().st_mtime) == 1768473000
 
 
 class TestAuthHaltAll:

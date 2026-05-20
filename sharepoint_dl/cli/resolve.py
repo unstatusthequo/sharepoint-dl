@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from urllib.parse import parse_qs, unquote, urlparse
 
 import requests
@@ -12,7 +13,9 @@ def resolve_folder_from_browser_url(url: str) -> str | None:
 
     Supports multiple SharePoint URL formats:
     - ``id=`` query parameter (classic sharing links)
+    - ``RootFolder=`` query parameter (classic document-library views)
     - ``/:f:/r/`` path prefix (direct resource links, e.g. authenticated shares)
+    - Direct document-library URLs, including ``/Forms/AllItems.aspx`` views
 
     Args:
         url: A SharePoint browser URL (from the address bar or sharing link).
@@ -26,19 +29,40 @@ def resolve_folder_from_browser_url(url: str) -> str | None:
     params = parse_qs(parsed.query)
     if "id" in params:
         return unquote(params["id"][0])
+    if "RootFolder" in params:
+        return unquote(params["RootFolder"][0])
     # Try fragment
     if parsed.fragment:
         frag_params = parse_qs(parsed.fragment)
         if "id" in frag_params:
             return unquote(frag_params["id"][0])
+        if "RootFolder" in frag_params:
+            return unquote(frag_params["RootFolder"][0])
 
     # Format 2: /:f:/r/ or /:f:/s/ path prefix (direct resource links)
     # Pattern: /:f:/r/sites/SiteName/Shared Documents/folder → /sites/SiteName/Shared Documents/folder
     decoded_path = unquote(parsed.path)
-    import re
     match = re.match(r"/:f:/[rs](/sites/.+)", decoded_path)
     if match:
         return match.group(1)
+
+    # Format 3: direct SharePoint browser URLs.
+    # Document-library views use /Forms/AllItems.aspx under the library root,
+    # while copied folder URLs can point directly at a server-relative folder.
+    parts = [part for part in decoded_path.strip("/").split("/") if part]
+    if len(parts) >= 3 and parts[0] in ("sites", "personal"):
+        if "_layouts" in parts:
+            return None
+
+        for index, part in enumerate(parts):
+            if (
+                part == "Forms"
+                and index + 1 < len(parts)
+                and parts[index + 1].endswith(".aspx")
+            ):
+                return "/" + "/".join(parts[:index])
+
+        return "/" + "/".join(parts)
 
     return None
 

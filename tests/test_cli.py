@@ -4,10 +4,9 @@ import json
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
 from typer.testing import CliRunner
 
-from sharepoint_dl.cli.main import app
+from sharepoint_dl.cli.main import _normalize_path_input, _parse_sharepoint_url, app
 from sharepoint_dl.cli.resolve import resolve_folder_from_browser_url, resolve_sharing_link
 from sharepoint_dl.enumerator.traversal import AuthExpiredError, FileEntry
 from sharepoint_dl.state.job_state import FileStatus, JobState
@@ -23,6 +22,52 @@ TEST_URL = "https://contoso.sharepoint.com/sites/shared/Shared%20Documents/Image
 # ---------------------------------------------------------------------------
 
 
+class TestNormalizePathInput:
+    """Normalize paths pasted into CLI prompts."""
+
+    def test_strips_shell_single_quotes_from_absolute_path(self):
+        result = _normalize_path_input("'/Users/me/Downloads/My Folder'")
+        assert result == Path("/Users/me/Downloads/My Folder")
+
+    def test_strips_shell_double_quotes_from_absolute_path(self):
+        result = _normalize_path_input('"/Users/me/Downloads/My Folder"')
+        assert result == Path("/Users/me/Downloads/My Folder")
+
+    def test_unescapes_shell_escaped_spaces(self):
+        result = _normalize_path_input("/Users/me/Downloads/My\\ Folder")
+        assert result == Path("/Users/me/Downloads/My Folder")
+
+    def test_expands_user_home(self):
+        result = _normalize_path_input("~/Downloads")
+        assert result == Path.home() / "Downloads"
+
+    def test_preserves_unquoted_spaces_from_prompt_input(self):
+        result = _normalize_path_input("/Users/me/Downloads/My Folder")
+        assert result == Path("/Users/me/Downloads/My Folder")
+
+
+class TestParseSharePointUrl:
+    """_parse_sharepoint_url derives the REST web URL from browser URLs."""
+
+    def test_allitems_library_under_standard_site(self):
+        url = (
+            "https://duracell.sharepoint.com/sites/externalRD-shanshan/"
+            "Shared%20Documents/Forms/AllItems.aspx"
+        )
+        site_url, server_relative_path = _parse_sharepoint_url(url)
+        assert site_url == "https://duracell.sharepoint.com/sites/externalRD-shanshan"
+        assert server_relative_path == "/sites/externalRD-shanshan/Shared Documents"
+
+    def test_allitems_library_under_nested_subsite(self):
+        url = (
+            "https://duracell.sharepoint.com/sites/External/RD/"
+            "Optima%20Chemical/Forms/AllItems.aspx"
+        )
+        site_url, server_relative_path = _parse_sharepoint_url(url)
+        assert site_url == "https://duracell.sharepoint.com/sites/External/RD"
+        assert server_relative_path == "/sites/External/RD/Optima Chemical"
+
+
 class TestResolveFolderFromBrowserUrl:
     """resolve_folder_from_browser_url extracts id= from SharePoint URLs."""
 
@@ -34,6 +79,14 @@ class TestResolveFolderFromBrowserUrl:
         result = resolve_folder_from_browser_url(url)
         assert result == "/sites/shared/Shared Documents/Images"
 
+    def test_extracts_rootfolder_from_query_string(self):
+        url = (
+            "https://contoso.sharepoint.com/sites/shared/Shared%20Documents/Forms/AllItems.aspx"
+            "?RootFolder=%2Fsites%2Fshared%2FShared%20Documents%2FImages"
+        )
+        result = resolve_folder_from_browser_url(url)
+        assert result == "/sites/shared/Shared Documents/Images"
+
     def test_extracts_id_from_fragment(self):
         url = (
             "https://contoso.sharepoint.com/sites/shared/_layouts/15/onedrive.aspx"
@@ -41,6 +94,22 @@ class TestResolveFolderFromBrowserUrl:
         )
         result = resolve_folder_from_browser_url(url)
         assert result == "/sites/shared/Shared Documents/Images"
+
+    def test_extracts_library_root_from_allitems_view_url(self):
+        url = (
+            "https://duracell.sharepoint.com/sites/externalRD-shanshan/"
+            "Shared%20Documents/Forms/AllItems.aspx"
+        )
+        result = resolve_folder_from_browser_url(url)
+        assert result == "/sites/externalRD-shanshan/Shared Documents"
+
+    def test_extracts_nested_folder_from_direct_folder_url(self):
+        url = (
+            "https://contoso.sharepoint.com/sites/shared/"
+            "Shared%20Documents/Images/Custodian%201"
+        )
+        result = resolve_folder_from_browser_url(url)
+        assert result == "/sites/shared/Shared Documents/Images/Custodian 1"
 
     def test_returns_none_when_no_id_present(self):
         url = "https://contoso.sharepoint.com/sites/shared/_layouts/15/onedrive.aspx?view=list"
@@ -92,7 +161,7 @@ class TestAutoDetectFallback:
         mock_resolve.return_value = "/sites/shared/Shared Documents/Images"
         mock_enum.return_value = []  # no files — exits cleanly
 
-        result = runner.invoke(
+        runner.invoke(
             app,
             ["download", TEST_URL, "/tmp/dest", "--yes"],
         )
@@ -113,7 +182,7 @@ class TestAutoDetectFallback:
         mock_resolve.return_value = "/sites/shared/Shared Documents/Images"
         mock_enum.return_value = []
 
-        result = runner.invoke(
+        runner.invoke(
             app,
             ["list", TEST_URL],
         )
@@ -132,7 +201,7 @@ class TestAutoDetectFallback:
         mock_validate.return_value = True
         mock_enum.return_value = []
 
-        result = runner.invoke(
+        runner.invoke(
             app,
             ["download", TEST_URL, "/tmp/dest", "-r", "/explicit/path", "--yes"],
         )
@@ -151,7 +220,7 @@ class TestAutoDetectFallback:
         mock_validate.return_value = True
         mock_enum.return_value = []
 
-        result = runner.invoke(
+        runner.invoke(
             app,
             ["list", TEST_URL, "-r", "/explicit/path"],
         )
@@ -652,6 +721,93 @@ class TestDownloadCompleteSummary:
         assert "2" in result.output  # file count
 
 
+class TestInteractiveVerificationFlow:
+    """Interactive batch mode prompt ordering."""
+
+    @patch("sharepoint_dl.cli.main.save_config")
+    @patch("sharepoint_dl.cli.main._run_verify")
+    @patch("sharepoint_dl.cli.main.generate_manifest")
+    @patch("sharepoint_dl.cli.main.JobState")
+    @patch("sharepoint_dl.cli.main.download_all")
+    @patch("sharepoint_dl.cli.main._make_progress")
+    @patch("sharepoint_dl.cli.main.enumerate_files")
+    @patch("sharepoint_dl.cli.main._list_subfolders")
+    @patch("sharepoint_dl.cli.main.resolve_sharing_link")
+    @patch("sharepoint_dl.cli.main.validate_session")
+    @patch("sharepoint_dl.cli.main.load_session")
+    @patch(
+        "sharepoint_dl.cli.main.load_config",
+        return_value={"sharepoint_url": "", "download_dest": "", "workers": 3, "flat": False, "throttle": ""},
+    )
+    @patch("sharepoint_dl.cli.main.os.system")
+    def test_verification_runs_before_queue_another_folder_prompt(
+        self,
+        _mock_system,
+        _mock_cfg,
+        mock_load,
+        mock_validate,
+        mock_resolve,
+        mock_subfolders,
+        mock_enum,
+        mock_progress,
+        mock_dl,
+        mock_job_state,
+        mock_gen_manifest,
+        mock_run_verify,
+        _mock_save_config,
+        tmp_path: Path,
+    ):
+        """Interactive mode verifies the current download before offering another folder."""
+        from sharepoint_dl.cli import main as cli_main
+
+        events: list[str] = []
+        files = [
+            FileEntry(name="f1.dat", server_relative_url="/a/f1.dat", size_bytes=100, folder_path="/a"),
+        ]
+
+        mock_load.return_value = MagicMock()
+        mock_validate.return_value = True
+        mock_resolve.return_value = "/sites/shared/Docs"
+        mock_subfolders.return_value = []
+        mock_enum.return_value = files
+        mock_progress_inst = MagicMock()
+        mock_progress_inst.__enter__ = MagicMock(return_value=mock_progress_inst)
+        mock_progress_inst.__exit__ = MagicMock(return_value=False)
+        mock_progress.return_value = mock_progress_inst
+        mock_dl.return_value = (["/a/f1.dat"], [])
+        mock_job_state.return_value = MagicMock()
+        mock_gen_manifest.return_value = tmp_path / "manifest.json"
+        mock_run_verify.side_effect = lambda _path: events.append("run_verify")
+
+        def prompt_side_effect(message, default=None):
+            if "SharePoint" in message:
+                return TEST_URL
+            if "Download destination" in message:
+                return str(tmp_path)
+            if "Bandwidth limit" in message:
+                return "skip"
+            return default or ""
+
+        def confirm_side_effect(message, default=False):
+            if "Start download" in message:
+                events.append("confirm_start")
+                return True
+            if "Verify downloaded files" in message:
+                events.append("confirm_verify")
+                return True
+            if "Queue another folder" in message:
+                events.append("confirm_queue")
+                return False
+            return default
+
+        with patch.object(cli_main.Prompt, "ask", side_effect=prompt_side_effect), \
+            patch.object(cli_main.IntPrompt, "ask", return_value=3), \
+            patch.object(cli_main.Confirm, "ask", side_effect=confirm_side_effect):
+            cli_main._interactive_mode_inner()
+
+        assert events == ["confirm_start", "confirm_verify", "run_verify", "confirm_queue"]
+
+
 class TestHelpOutput:
     """No args shows help."""
 
@@ -717,6 +873,49 @@ class TestManifestIntegration:
         assert args[0][2] == TEST_URL  # source_url
         assert args[0][3] == "/sites/shared/Docs"  # root_folder
         assert args.kwargs["flat"] is False
+
+    @patch("sharepoint_dl.cli.main.generate_manifest")
+    @patch("sharepoint_dl.cli.main.JobState")
+    @patch("sharepoint_dl.cli.main.download_all")
+    @patch("sharepoint_dl.cli.main._make_progress")
+    @patch("sharepoint_dl.cli.main.enumerate_files")
+    @patch("sharepoint_dl.cli.main.validate_session")
+    @patch("sharepoint_dl.cli.main.load_session")
+    @patch("sharepoint_dl.cli.main.load_config", return_value={"sharepoint_url": "", "download_dest": "", "workers": 3, "flat": False})
+    def test_download_normalizes_shell_quoted_dest(
+        self, _mock_cfg, mock_load, mock_validate, mock_enum, mock_progress, mock_dl,
+        mock_job_state, mock_gen_manifest,
+    ):
+        """download treats pasted shell quotes as syntax, not path characters."""
+        _setup_download_mocks(
+            mock_load,
+            mock_validate,
+            mock_enum,
+            mock_progress,
+            mock_dl,
+            self.FILES,
+            ["/a/f1.dat", "/a/f2.dat"],
+            [],
+        )
+        mock_state_inst = MagicMock()
+        mock_job_state.return_value = mock_state_inst
+        mock_gen_manifest.return_value = Path("/tmp/my dest/manifest.json")
+
+        result = runner.invoke(
+            app,
+            [
+                "download",
+                TEST_URL,
+                "'/tmp/my dest'",
+                "--root-folder",
+                "/sites/shared/Docs",
+                "--yes",
+            ],
+        )
+
+        assert result.exit_code == 0
+        assert mock_dl.call_args.args[2] == Path("/tmp/my dest")
+        assert mock_gen_manifest.call_args.args[1] == Path("/tmp/my dest")
 
     @patch("sharepoint_dl.cli.main.download_all")
     @patch("sharepoint_dl.cli.main._make_progress")

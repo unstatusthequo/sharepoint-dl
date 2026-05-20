@@ -109,6 +109,49 @@ class TestManifestPerFileFields:
         assert "sha256" in first
         assert "downloaded_at" in first
 
+    def test_manifest_includes_sharepoint_metadata_and_absolute_path(self, tmp_path: Path):
+        from sharepoint_dl.enumerator.traversal import FileEntry as FE
+        from sharepoint_dl.manifest.writer import generate_manifest
+
+        entry = FE(
+            name="report.xlsx",
+            server_relative_url="/sites/shared/Images/report.xlsx",
+            size_bytes=123,
+            folder_path="/sites/shared/Images",
+            sharepoint_created_at="2026-01-14T09:15:00Z",
+            sharepoint_modified_at="2026-01-15T10:30:00Z",
+            sharepoint_created_by="Alice Creator",
+            sharepoint_created_by_email="alice@example.com",
+            sharepoint_modified_by="Bob Uploader",
+            sharepoint_modified_by_email="bob@example.com",
+        )
+        state = JobState(tmp_path)
+        state.initialize([entry])
+        state.set_status(
+            entry.server_relative_url,
+            FileStatus.COMPLETE,
+            local_path="Images/report.xlsx",
+            sha256="aabbccdd" * 8,
+            downloaded_at="2026-03-27T10:00:00Z",
+        )
+
+        path = generate_manifest(
+            state=state,
+            dest_dir=tmp_path,
+            source_url="https://contoso.sharepoint.com/sites/shared/Images",
+            root_folder="Images",
+        )
+
+        manifest = json.loads(path.read_text())
+        first = manifest["files"][0]
+        assert first["absolute_local_path"] == str(tmp_path / "Images" / "report.xlsx")
+        assert first["sharepoint_created_at"] == "2026-01-14T09:15:00Z"
+        assert first["sharepoint_modified_at"] == "2026-01-15T10:30:00Z"
+        assert first["sharepoint_created_by"] == "Alice Creator"
+        assert first["sharepoint_created_by_email"] == "alice@example.com"
+        assert first["sharepoint_modified_by"] == "Bob Uploader"
+        assert first["sharepoint_modified_by_email"] == "bob@example.com"
+
     def test_manifest_uses_persisted_local_path_for_preserved_folder_entries(
         self, tmp_path: Path, file_entries: list[FileEntry]
     ):
@@ -476,7 +519,7 @@ class TestManifestCsvGeneration:
         assert (tmp_path / "manifest.json").exists()
 
     def test_csv_has_correct_header_row(self, tmp_path: Path, file_entries: list[FileEntry]):
-        """Test 2: CSV has header row: filename,local_path,size_bytes,sha256,status,error,downloaded_at."""
+        """Test 2: CSV has header row with path, hash, status, and SharePoint metadata."""
         import csv as csv_module
         from sharepoint_dl.manifest.writer import generate_manifest
 
@@ -492,7 +535,63 @@ class TestManifestCsvGeneration:
             reader = csv_module.DictReader(fh)
             headers = reader.fieldnames
 
-        assert headers == ["filename", "local_path", "size_bytes", "sha256", "status", "error", "downloaded_at"]
+        assert headers == [
+            "filename",
+            "server_relative_url",
+            "local_path",
+            "absolute_local_path",
+            "size_bytes",
+            "sha256",
+            "status",
+            "error",
+            "downloaded_at",
+            "sharepoint_created_at",
+            "sharepoint_modified_at",
+            "sharepoint_created_by",
+            "sharepoint_created_by_email",
+            "sharepoint_modified_by",
+            "sharepoint_modified_by_email",
+        ]
+
+    def test_csv_includes_absolute_path_and_modified_by(self, tmp_path: Path):
+        """CSV report includes full local path and uploader/modifier metadata."""
+        import csv as csv_module
+        from sharepoint_dl.enumerator.traversal import FileEntry as FE
+        from sharepoint_dl.manifest.writer import generate_manifest
+
+        entry = FE(
+            name="report.xlsx",
+            server_relative_url="/sites/shared/Images/report.xlsx",
+            size_bytes=123,
+            folder_path="/sites/shared/Images",
+            sharepoint_modified_at="2026-01-15T10:30:00Z",
+            sharepoint_modified_by="Bob Uploader",
+            sharepoint_modified_by_email="bob@example.com",
+        )
+        state = JobState(tmp_path)
+        state.initialize([entry])
+        state.set_status(
+            entry.server_relative_url,
+            FileStatus.COMPLETE,
+            local_path="Images/report.xlsx",
+            sha256="aabbccdd" * 8,
+            downloaded_at="2026-03-27T10:00:00Z",
+        )
+
+        generate_manifest(
+            state=state,
+            dest_dir=tmp_path,
+            source_url="https://contoso.sharepoint.com/sites/shared/Images",
+            root_folder="Images",
+        )
+
+        with (tmp_path / "manifest.csv").open(newline="") as fh:
+            row = next(csv_module.DictReader(fh))
+
+        assert row["absolute_local_path"] == str(tmp_path / "Images" / "report.xlsx")
+        assert row["sharepoint_modified_at"] == "2026-01-15T10:30:00Z"
+        assert row["sharepoint_modified_by"] == "Bob Uploader"
+        assert row["sharepoint_modified_by_email"] == "bob@example.com"
 
     def test_complete_files_have_correct_csv_fields(self, tmp_path: Path, file_entries: list[FileEntry]):
         """Test 3: Complete files have status=COMPLETE, error="" (blank), and full sha256 hash."""
