@@ -151,6 +151,10 @@ All commands are also available as direct CLI flags for scripting or automation.
 ./run.sh auth '<sharepoint-sharing-url>'
 ```
 
+| Option | Description |
+|--------|-------------|
+| `--output-cookies` | Returns the two authentication cookies (FedAuth and rtFa) in JSON format (if you need to use these with other tools) |
+
 ### `list` -- Enumerate Files
 
 ```bash

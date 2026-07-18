@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import time
 import os
+import re
 import shlex
 from collections import defaultdict
 from pathlib import Path
@@ -17,13 +18,18 @@ from rich.table import Table
 
 from sharepoint_dl.auth.browser import harvest_session
 from sharepoint_dl.auth.reauth import ReauthController
-from sharepoint_dl.cli.resolve import resolve_folder_from_browser_url, resolve_sharing_link
+from sharepoint_dl.cli.resolve import (
+    resolve_file_from_browser_url,
+    resolve_file_sharing_link,
+    resolve_folder_from_browser_url,
+    resolve_sharing_link,
+)
 from sharepoint_dl.auth.session import load_session, validate_session
 from sharepoint_dl.config import load_config, save_config
 from sharepoint_dl.downloader.engine import _make_progress, download_all
 from sharepoint_dl.downloader.log import setup_download_logger, shutdown_download_logger
 from sharepoint_dl.downloader.throttle import TokenBucket, parse_throttle
-from sharepoint_dl.enumerator.traversal import AuthExpiredError, enumerate_files
+from sharepoint_dl.enumerator.traversal import AuthExpiredError, enumerate_files, fetch_single_file
 from sharepoint_dl.manifest import generate_manifest
 from sharepoint_dl.manifest.verifier import verify_manifest
 from sharepoint_dl.state.job_state import JobState
@@ -37,6 +43,9 @@ app = typer.Typer(
 console = Console()
 
 
+_ESCAPED_SPACES_ONLY = re.compile(r"(?:[^\\]|\\ )*")
+
+
 def _normalize_path_input(value: str | Path) -> Path:
     """Return a Path from shell-style pasted input.
 
@@ -48,18 +57,32 @@ def _normalize_path_input(value: str | Path) -> Path:
     if not raw:
         return Path(raw)
 
-    try:
-        tokens = shlex.split(raw)
-    except ValueError:
-        tokens = []
-
-    if len(tokens) == 1:
-        raw = tokens[0]
-    elif len(raw) >= 2 and raw[0] == raw[-1] and raw[0] in ("'", '"'):
+    if len(raw) >= 2 and raw[0] == raw[-1] and raw[0] in ("'", '"'):
         raw = raw[1:-1]
+    elif "\\" not in raw or _ESCAPED_SPACES_ONLY.fullmatch(raw):
+        # shlex.split() treats backslash as a generic escape character,
+        # silently dropping it and merging the next letter into the
+        # previous word — e.g. C:\Users\me becomes C:Usersme. Only run
+        # unquoted input through it when any backslashes present are
+        # POSIX-style escaped spaces ("\ "), not Windows path separators.
+        try:
+            tokens = shlex.split(raw)
+        except ValueError:
+            tokens = []
+        if len(tokens) == 1:
+            raw = tokens[0]
 
     return Path(os.path.expandvars(os.path.expanduser(raw)))
 
+
+def _resolve_file_path(session: _requests.Session, url: str) -> str | None:
+    """Try resolving a URL as a single-file link.
+
+    Checked before folder resolution wherever a URL is accepted, since the
+    folder resolver's direct-path fallback is unselective and will happily
+    treat a bare file URL as a folder path if given the chance.
+    """
+    return resolve_file_from_browser_url(url) or resolve_file_sharing_link(session, url)
 
 
 def _list_subfolders(
@@ -228,10 +251,13 @@ def _interactive_mode_inner() -> None:
     _section_header("02", "SELECT TARGET FOLDER")
 
     with console.status("    [dim]Resolving sharing link...[/dim]", spinner="dots"):
-        root_path = resolve_sharing_link(session, sharing_url)
+        root_path = _resolve_file_path(session, sharing_url)
+        root_is_file = root_path is not None
+        if root_path is None:
+            root_path = resolve_sharing_link(session, sharing_url)
 
     if root_path:
-        _info(f"Shared root: {root_path}")
+        _info(f"Shared {'file' if root_is_file else 'root'}: {root_path}")
     else:
         _warn("Could not auto-resolve folder from sharing link.")
 
@@ -276,9 +302,10 @@ def _interactive_mode_inner() -> None:
         except ValueError as exc:
             _error(f"Invalid throttle value: {exc}")
 
-    # Batch loop — each iteration downloads one folder
+    # Batch loop — each iteration downloads one folder (or single file)
     batch_results: list[dict] = []
     current_path = root_path
+    current_is_file = root_is_file
 
     while True:
         # --- FOLDER SELECTION ---
@@ -286,13 +313,19 @@ def _interactive_mode_inner() -> None:
 
         while True:
             if current_path is None:
-                folder_url = Prompt.ask(
-                    "    [bold]Paste the browser URL of the target folder[/bold]"
+                target_url = Prompt.ask(
+                    "    [bold]Paste the browser URL of the target folder or file[/bold]"
                 ).strip()
-                current_path = resolve_folder_from_browser_url(folder_url)
+                current_path = _resolve_file_path(session, target_url)
+                current_is_file = current_path is not None
                 if current_path is None:
-                    _error("Could not extract folder path from that URL. Try again.")
-                    continue
+                    current_path = resolve_folder_from_browser_url(target_url)
+                    if current_path is None:
+                        _error("Could not extract a folder or file path from that URL. Try again.")
+                        continue
+
+            if current_is_file:
+                break
 
             # Show current folder and subfolders
             console.print(f"\n    [bright_cyan]Current:[/bright_cyan] {current_path}")
@@ -330,11 +363,16 @@ def _interactive_mode_inner() -> None:
                         _error("Invalid number.")
                         continue
                 except ValueError:
+                    file_path = _resolve_file_path(session, choice)
+                    if file_path is not None:
+                        current_path = file_path
+                        current_is_file = True
+                        break
                     resolved = resolve_folder_from_browser_url(choice)
                     if resolved:
                         current_path = resolved
                         continue
-                    _error("Invalid input. Enter a number or paste a folder URL.")
+                    _error("Invalid input. Enter a number or paste a folder/file URL.")
                     continue
             else:
                 _info("No subfolders — this is a leaf folder.")
@@ -346,12 +384,32 @@ def _interactive_mode_inner() -> None:
         # --- FILE ENUMERATION ---
         _section_header("03", "SCANNING FILES")
 
-        with console.status("    [bright_cyan]Enumerating...[/bright_cyan]", spinner="dots"):
-            try:
-                files = enumerate_files(session, site_url, server_relative_path)
-            except AuthExpiredError:
-                _error("Session expired. Please restart.")
-                raise typer.Exit(code=1)
+        if current_is_file:
+            with console.status("    [bright_cyan]Fetching file...[/bright_cyan]", spinner="dots"):
+                try:
+                    files = [fetch_single_file(session, site_url, server_relative_path)]
+                except AuthExpiredError:
+                    _error("Session expired. Please restart.")
+                    raise typer.Exit(code=1)
+                except Exception:
+                    # Might be a false-positive file match (e.g. a folder
+                    # with a dot in its name) — fall back to folder enumeration.
+                    try:
+                        files = enumerate_files(session, site_url, server_relative_path)
+                        current_is_file = False
+                    except AuthExpiredError:
+                        _error("Session expired. Please restart.")
+                        raise typer.Exit(code=1)
+                    except Exception as exc:
+                        _error(f"Could not fetch file: {exc}")
+                        raise typer.Exit(code=1)
+        else:
+            with console.status("    [bright_cyan]Enumerating...[/bright_cyan]", spinner="dots"):
+                try:
+                    files = enumerate_files(session, site_url, server_relative_path)
+                except AuthExpiredError:
+                    _error("Session expired. Please restart.")
+                    raise typer.Exit(code=1)
 
         if not files:
             _warn("No files found in that folder.")
@@ -363,14 +421,23 @@ def _interactive_mode_inner() -> None:
                 raise typer.Exit(code=0)
             if retry.lower() == "root":
                 current_path = root_path
+                current_is_file = root_is_file
+                continue
+
+            file_path = _resolve_file_path(session, retry)
+            if file_path is not None:
+                current_path = file_path
+                current_is_file = True
                 continue
 
             resolved = resolve_folder_from_browser_url(retry)
             if resolved is None:
                 _error("Could not extract folder path from that URL.")
                 current_path = None
+                current_is_file = False
             else:
                 current_path = resolved
+                current_is_file = False
             continue
 
         total_size = sum(f.size_bytes for f in files)
@@ -406,7 +473,7 @@ def _interactive_mode_inner() -> None:
         # Confirm
         console.print()
         console.print(f"  [dim]{'─' * 44}[/dim]")
-        console.print(f"  [bright_cyan]Folder:[/bright_cyan]  {folder_display}")
+        console.print(f"  [bright_cyan]{'File' if current_is_file else 'Folder'}:[/bright_cyan]  {folder_display}")
         console.print(f"  [bright_cyan]Files:[/bright_cyan]   {len(files)} ({_format_size(total_size)})")
         console.print(f"  [bright_cyan]Dest:[/bright_cyan]    {batch_root}")
         console.print(f"  [bright_cyan]Workers:[/bright_cyan] {workers}")
@@ -587,6 +654,7 @@ def _interactive_mode_inner() -> None:
 
         # Reset navigation to shared root for next job
         current_path = root_path
+        current_is_file = root_is_file
 
     # --- BATCH SUMMARY (shown when 2+ jobs completed) ---
     if len(batch_results) > 1:
@@ -737,14 +805,40 @@ def _parse_sharepoint_url(url: str) -> tuple[str, str]:
     return site_url, server_relative_path
 
 
+def _print_auth_cookies_json(session_path: Path) -> None:
+    """Print the FedAuth/rtFa cookie values as a JSON string.
+
+    These are full bearer tokens — printing them grants full authenticated
+    access, same as a password.
+    """
+    import json as _json
+
+    try:
+        data = _json.loads(session_path.read_text())
+    except (OSError, _json.JSONDecodeError):
+        return
+
+    cookies = {c.get("name"): c.get("value") for c in data.get("cookies", [])}
+    output = {name: cookies.get(name) for name in ("FedAuth", "rtFa")}
+    console.print(_json.dumps(output), soft_wrap=True)
+
+
 @app.command()
 def auth(
     url: str = typer.Argument(..., help="SharePoint sharing URL"),
+    output_cookies: bool = typer.Option(
+        False,
+        "--output-cookies",
+        help="Print the FedAuth and rtFa session cookies as a JSON string.",
+    ),
 ) -> None:
     """Authenticate against SharePoint and save session cookies."""
     try:
-        harvest_session(url)
-        console.print(f"[green]Session saved. You can now run 'sharepoint-dl list {url}'[/green]")
+        session_path = harvest_session(url)
+        if output_cookies:
+            _print_auth_cookies_json(session_path)
+        else:
+            console.print(f"[green]Session saved. You can now run 'sharepoint-dl list {url}'[/green]")
     except TimeoutError:
         console.print(
             "[red]Authentication timed out. Please try again and complete login "
@@ -866,22 +960,31 @@ def list_files(
         )
         raise typer.Exit(code=1)
 
+    file_path: str | None = None
     if root_folder is None:
-        with console.status("[bold green]Resolving folder from sharing link...", spinner="dots"):
-            root_folder = resolve_sharing_link(session, url)
-        if root_folder is None:
+        with console.status("[bold green]Resolving link...", spinner="dots"):
+            file_path = _resolve_file_path(session, url)
+            if file_path is None:
+                root_folder = resolve_sharing_link(session, url)
+        if file_path is not None:
+            console.print(f"[green]Auto-detected file:[/green] {file_path}")
+        elif root_folder is None:
             console.print(
                 "[red]Could not auto-detect folder from URL. "
                 "Please specify --root-folder (-r) manually.[/red]"
             )
             raise typer.Exit(code=1)
-        console.print(f"[green]Auto-detected folder:[/green] {root_folder}")
+        else:
+            console.print(f"[green]Auto-detected folder:[/green] {root_folder}")
 
-    server_relative_path = root_folder
+    server_relative_path = file_path if file_path is not None else root_folder
 
     try:
         with console.status("[bold green]Scanning folders...", spinner="dots"):
-            files = enumerate_files(session, site_url, server_relative_path)
+            if file_path is not None:
+                files = [fetch_single_file(session, site_url, server_relative_path)]
+            else:
+                files = enumerate_files(session, site_url, server_relative_path)
     except AuthExpiredError:
         console.print(
             "[red]Session expired during enumeration. "
@@ -998,24 +1101,33 @@ def download(
         )
         raise typer.Exit(code=1)
 
-    # 3b. Auto-detect root folder if not provided
+    # 3b. Auto-detect root folder (or single file) if not provided
+    file_path: str | None = None
     if root_folder is None:
-        with console.status("[bold green]Resolving folder from sharing link...", spinner="dots"):
-            root_folder = resolve_sharing_link(session, url)
-        if root_folder is None:
+        with console.status("[bold green]Resolving link...", spinner="dots"):
+            file_path = _resolve_file_path(session, url)
+            if file_path is None:
+                root_folder = resolve_sharing_link(session, url)
+        if file_path is not None:
+            console.print(f"[green]Auto-detected file:[/green] {file_path}")
+        elif root_folder is None:
             console.print(
                 "[red]Could not auto-detect folder from URL. "
                 "Please specify --root-folder (-r) manually.[/red]"
             )
             raise typer.Exit(code=1)
-        console.print(f"[green]Auto-detected folder:[/green] {root_folder}")
+        else:
+            console.print(f"[green]Auto-detected folder:[/green] {root_folder}")
 
-    server_relative_path = root_folder
+    server_relative_path = file_path if file_path is not None else root_folder
 
     # 4. Enumerate files
     try:
         with console.status("[bold green]Scanning folders...", spinner="dots"):
-            files = enumerate_files(session, site_url, server_relative_path)
+            if file_path is not None:
+                files = [fetch_single_file(session, site_url, server_relative_path)]
+            else:
+                files = enumerate_files(session, site_url, server_relative_path)
     except AuthExpiredError:
         console.print(
             "[red]Session expired during enumeration. "
@@ -1101,7 +1213,7 @@ def download(
     # 9. Manifest generation
     manifest_path = None
     if not no_manifest and state is not None:
-        manifest_path = generate_manifest(state, dest, url, root_folder, flat=flat)
+        manifest_path = generate_manifest(state, dest, url, server_relative_path, flat=flat)
         if manifest_path:
             dl_logger.info("Manifest written: %s", manifest_path)
 

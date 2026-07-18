@@ -25,11 +25,8 @@ class TestHarvestSession:
         )
         mock_context.new_page.return_value = mock_page
 
-        mock_browser = MagicMock()
-        mock_browser.new_context.return_value = mock_context
-
         mock_pw = MagicMock()
-        mock_pw.chromium.launch.return_value = mock_browser
+        mock_pw.chromium.launch_persistent_context.return_value = mock_context
 
         mock_pw_cm = MagicMock()
         mock_pw_cm.__enter__ = MagicMock(return_value=mock_pw)

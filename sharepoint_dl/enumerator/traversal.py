@@ -86,6 +86,66 @@ def _fetch_page(session: requests.Session, url: str) -> tuple[list[dict], str | 
     return results, next_url
 
 
+@retry(
+    wait=wait_exponential(multiplier=1, min=2, max=30),
+    stop=stop_after_attempt(3),
+    retry=retry_if_exception_type(requests.HTTPError),
+    before_sleep=before_sleep_log(logger, logging.WARNING),
+)
+def fetch_single_file(
+    session: requests.Session,
+    site_url: str,
+    server_relative_path: str,
+) -> FileEntry:
+    """Fetch metadata for a single SharePoint file (no folder traversal).
+
+    Args:
+        session: Authenticated requests.Session with SharePoint cookies.
+        site_url: SharePoint site URL (e.g. https://contoso.sharepoint.com/sites/shared).
+        server_relative_path: Server-relative path to the file.
+
+    Returns:
+        A FileEntry for the file, with folder_path set to its parent directory.
+
+    Raises:
+        AuthExpiredError: If session expires (401/403).
+        requests.HTTPError: For other HTTP errors (retried by tenacity).
+    """
+    site_url = site_url.rstrip("/")
+    encoded = quote(server_relative_path, safe="")
+    url = (
+        f"{site_url}/_api/web/GetFileByServerRelativeUrl('{encoded}')"
+        "?$select=Name,ServerRelativeUrl,Length,TimeCreated,TimeLastModified,"
+        "Author/Title,Author/Email,Author/EMail,"
+        "ModifiedBy/Title,ModifiedBy/Email,ModifiedBy/EMail"
+        "&$expand=Author,ModifiedBy"
+    )
+    headers = {"Accept": "application/json;odata=verbose"}
+    resp = session.get(url, headers=headers, timeout=(10, 60))
+
+    if resp.status_code in (401, 403):
+        raise AuthExpiredError(
+            "Session expired. Run 'sharepoint-dl auth <url>' to re-authenticate."
+        )
+
+    resp.raise_for_status()
+
+    item = resp.json()["d"]
+    folder_path = server_relative_path.rsplit("/", 1)[0] if "/" in server_relative_path else ""
+    return FileEntry(
+        name=item["Name"],
+        server_relative_url=item["ServerRelativeUrl"],
+        size_bytes=int(item.get("Length", 0)),
+        folder_path=folder_path,
+        sharepoint_created_at=item.get("TimeCreated"),
+        sharepoint_modified_at=item.get("TimeLastModified"),
+        sharepoint_created_by=_user_field(item, "Author", "Title"),
+        sharepoint_created_by_email=_user_field(item, "Author", "Email"),
+        sharepoint_modified_by=_user_field(item, "ModifiedBy", "Title"),
+        sharepoint_modified_by_email=_user_field(item, "ModifiedBy", "Email"),
+    )
+
+
 def enumerate_files(
     session: requests.Session,
     site_url: str,
