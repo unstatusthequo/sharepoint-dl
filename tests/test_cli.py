@@ -7,7 +7,13 @@ from unittest.mock import MagicMock, patch
 from typer.testing import CliRunner
 
 from sharepoint_dl.cli.main import _normalize_path_input, _parse_sharepoint_url, app
-from sharepoint_dl.cli.resolve import resolve_folder_from_browser_url, resolve_sharing_link
+from sharepoint_dl.cli.resolve import (
+    resolve_file_by_sourcedoc,
+    resolve_file_from_browser_url,
+    resolve_file_sharing_link,
+    resolve_folder_from_browser_url,
+    resolve_sharing_link,
+)
 from sharepoint_dl.enumerator.traversal import AuthExpiredError, FileEntry
 from sharepoint_dl.state.job_state import FileStatus, JobState
 
@@ -44,6 +50,19 @@ class TestNormalizePathInput:
     def test_preserves_unquoted_spaces_from_prompt_input(self):
         result = _normalize_path_input("/Users/me/Downloads/My Folder")
         assert result == Path("/Users/me/Downloads/My Folder")
+
+    def test_preserves_bare_windows_path_backslashes(self):
+        result = _normalize_path_input(r"C:\Users\hkelley\Downloads\sharepoint-dl")
+        assert result == Path(r"C:\Users\hkelley\Downloads\sharepoint-dl")
+
+    def test_preserves_quoted_windows_path_backslashes(self):
+        """'Copy as path' from Windows Explorer wraps the path in double quotes."""
+        result = _normalize_path_input('"C:\\Users\\hkelley\\Downloads\\sharepoint-dl"')
+        assert result == Path(r"C:\Users\hkelley\Downloads\sharepoint-dl")
+
+    def test_preserves_windows_path_with_spaces_and_backslashes(self):
+        result = _normalize_path_input(r"C:\Users\hkelley\My Downloads\sharepoint-dl")
+        assert result == Path(r"C:\Users\hkelley\My Downloads\sharepoint-dl")
 
 
 class TestParseSharePointUrl:
@@ -115,6 +134,147 @@ class TestResolveFolderFromBrowserUrl:
         url = "https://contoso.sharepoint.com/sites/shared/_layouts/15/onedrive.aspx?view=list"
         result = resolve_folder_from_browser_url(url)
         assert result is None
+
+
+class TestResolveFileFromBrowserUrl:
+    """resolve_file_from_browser_url extracts file paths, not folder paths."""
+
+    def test_extracts_path_from_direct_resource_link_word(self):
+        url = "https://contoso.sharepoint.com/:w:/r/sites/shared/Shared%20Documents/report.docx"
+        result = resolve_file_from_browser_url(url)
+        assert result == "/sites/shared/Shared Documents/report.docx"
+
+    def test_extracts_path_from_direct_resource_link_excel(self):
+        url = "https://contoso.sharepoint.com/:x:/r/sites/shared/Shared%20Documents/data.xlsx"
+        result = resolve_file_from_browser_url(url)
+        assert result == "/sites/shared/Shared Documents/data.xlsx"
+
+    def test_folder_prefix_is_not_treated_as_file(self):
+        url = "https://contoso.sharepoint.com/:f:/r/sites/shared/Shared%20Documents/Images"
+        result = resolve_file_from_browser_url(url)
+        assert result is None
+
+    def test_extracts_path_from_direct_file_url(self):
+        url = "https://contoso.sharepoint.com/sites/shared/Shared%20Documents/report.pdf"
+        result = resolve_file_from_browser_url(url)
+        assert result == "/sites/shared/Shared Documents/report.pdf"
+
+    def test_recognizes_macro_enabled_and_binary_office_extensions(self):
+        for ext in (".docm", ".xlsm", ".xlsb", ".pptm", ".doc", ".xls", ".ppt"):
+            url = f"https://contoso.sharepoint.com/sites/shared/Shared%20Documents/report{ext}"
+            assert resolve_file_from_browser_url(url) == f"/sites/shared/Shared Documents/report{ext}"
+
+    def test_allitems_aspx_is_not_treated_as_file(self):
+        url = (
+            "https://contoso.sharepoint.com/sites/shared/Shared%20Documents/Forms/AllItems.aspx"
+        )
+        result = resolve_file_from_browser_url(url)
+        assert result is None
+
+    def test_folder_with_dot_in_name_is_not_treated_as_file(self):
+        url = "https://contoso.sharepoint.com/sites/shared/Shared%20Documents/Q1.2024%20Reports"
+        result = resolve_file_from_browser_url(url)
+        assert result is None
+
+    def test_returns_none_for_plain_folder_url(self):
+        url = "https://contoso.sharepoint.com/sites/shared/Shared%20Documents/Images"
+        result = resolve_file_from_browser_url(url)
+        assert result is None
+
+    def test_strips_custom_view_page_appended_before_filename(self):
+        """Forms/<CustomView>.aspx/File.ext — the view page isn't a real path segment."""
+        url = (
+            "https://enduranceservices.sharepoint.com/sites/TeamSites/ProductDevelopment/"
+            "ratingpricingtools/Forms/Underwriting.aspx/ES%20Excess%20Energy_v2.21_production.xlsm"
+        )
+        result = resolve_file_from_browser_url(url)
+        assert result == (
+            "/sites/TeamSites/ProductDevelopment/ratingpricingtools/"
+            "ES Excess Energy_v2.21_production.xlsm"
+        )
+
+    def test_resolves_id_param_pointing_at_a_file(self):
+        """A custom-view Forms/*.aspx?id=... link where id= is a file, not a folder."""
+        url = (
+            "https://contoso.sharepoint.com/sites/shared/ratingpricingtools/Forms/Underwriting.aspx"
+            "?id=%2Fsites%2Fshared%2Fratingpricingtools%2Freport.xlsx"
+        )
+        result = resolve_file_from_browser_url(url)
+        assert result == "/sites/shared/ratingpricingtools/report.xlsx"
+
+    def test_id_param_pointing_at_a_folder_is_left_to_folder_resolver(self):
+        url = (
+            "https://contoso.sharepoint.com/sites/shared/ratingpricingtools/Forms/Underwriting.aspx"
+            "?id=%2Fsites%2Fshared%2Fratingpricingtools%2FImages"
+        )
+        result = resolve_file_from_browser_url(url)
+        assert result is None
+
+
+class TestResolveFileSharingLink:
+    """resolve_file_sharing_link follows redirects and resolves sourcedoc GUIDs."""
+
+    def test_direct_parse_short_circuits_without_network_call(self):
+        mock_session = MagicMock()
+        url = "https://contoso.sharepoint.com/:x:/r/sites/shared/Shared%20Documents/data.xlsx"
+
+        result = resolve_file_sharing_link(mock_session, url)
+
+        assert result == "/sites/shared/Shared Documents/data.xlsx"
+        mock_session.get.assert_not_called()
+
+    def test_follows_redirect_to_sourcedoc_landing_page(self):
+        mock_session = MagicMock()
+        redirect_resp = MagicMock()
+        redirect_resp.status_code = 200
+        redirect_resp.url = (
+            "https://contoso.sharepoint.com/sites/shared/_layouts/15/Doc.aspx"
+            "?sourcedoc=%7BABCD1234-0000-0000-0000-000000000000%7D&file=report.xlsx&action=default"
+        )
+
+        guid_resp = MagicMock()
+        guid_resp.status_code = 200
+        guid_resp.json.return_value = {"d": {"ServerRelativeUrl": "/sites/shared/Shared Documents/report.xlsx"}}
+
+        mock_session.get.side_effect = [redirect_resp, guid_resp]
+
+        result = resolve_file_sharing_link(mock_session, "https://contoso.sharepoint.com/:x:/s/shared/abc123")
+
+        assert result == "/sites/shared/Shared Documents/report.xlsx"
+        assert mock_session.get.call_count == 2
+
+    def test_returns_none_on_request_failure(self):
+        mock_session = MagicMock()
+        mock_session.get.side_effect = Exception("Connection error")
+
+        result = resolve_file_sharing_link(mock_session, "https://contoso.sharepoint.com/:x:/s/shared/abc123")
+        assert result is None
+
+
+class TestResolveFileBySourcedoc:
+    """resolve_file_by_sourcedoc resolves a Doc.aspx sourcedoc GUID via REST."""
+
+    def test_resolves_guid_to_server_relative_url(self):
+        mock_session = MagicMock()
+        resp = MagicMock()
+        resp.status_code = 200
+        resp.json.return_value = {"d": {"ServerRelativeUrl": "/sites/shared/Shared Documents/report.pdf"}}
+        mock_session.get.return_value = resp
+
+        url = (
+            "https://contoso.sharepoint.com/sites/shared/_layouts/15/Doc.aspx"
+            "?sourcedoc=%7BABCD1234-0000-0000-0000-000000000000%7D&file=report.pdf"
+        )
+        result = resolve_file_by_sourcedoc(mock_session, url)
+
+        assert result == "/sites/shared/Shared Documents/report.pdf"
+        called_url = mock_session.get.call_args[0][0]
+        assert "GetFileById('ABCD1234-0000-0000-0000-000000000000')" in called_url
+
+    def test_returns_none_without_sourcedoc_param(self):
+        mock_session = MagicMock()
+        url = "https://contoso.sharepoint.com/sites/shared/_layouts/15/Doc.aspx?file=report.pdf"
+        assert resolve_file_by_sourcedoc(mock_session, url) is None
 
 
 class TestResolveSharingLink:
@@ -289,6 +449,56 @@ class TestAuthCommand:
 
         assert result.exit_code == 1
 
+    @patch("sharepoint_dl.cli.main.harvest_session")
+    def test_auth_command_does_not_print_cookies_by_default(self, mock_harvest, tmp_path):
+        """auth without --output-cookies never prints cookie values."""
+        session_path = tmp_path / "session.json"
+        session_path.write_text(json.dumps({
+            "cookies": [
+                {"name": "FedAuth", "value": "A" * 40},
+                {"name": "rtFa", "value": "B" * 40},
+            ]
+        }))
+        mock_harvest.return_value = session_path
+
+        result = runner.invoke(app, ["auth", TEST_URL])
+
+        assert result.exit_code == 0
+        assert "A" * 40 not in result.output
+        assert "B" * 40 not in result.output
+
+    @patch("sharepoint_dl.cli.main.harvest_session")
+    def test_auth_command_output_cookies_prints_json(self, mock_harvest, tmp_path):
+        """--output-cookies prints the FedAuth/rtFa cookie values as a JSON string."""
+        session_path = tmp_path / "session.json"
+        session_path.write_text(json.dumps({
+            "cookies": [
+                {"name": "FedAuth", "value": "A" * 40},
+                {"name": "rtFa", "value": "B" * 40},
+                {"name": "OtherCookie", "value": "irrelevant"},
+            ]
+        }))
+        mock_harvest.return_value = session_path
+
+        result = runner.invoke(app, ["auth", TEST_URL, "--output-cookies"])
+
+        assert result.exit_code == 0
+        printed = json.loads(result.output.strip())
+        assert printed == {"FedAuth": "A" * 40, "rtFa": "B" * 40}
+
+    @patch("sharepoint_dl.cli.main.harvest_session")
+    def test_auth_command_output_cookies_reports_missing_cookies(self, mock_harvest, tmp_path):
+        """--output-cookies reports null for FedAuth/rtFa when they weren't captured."""
+        session_path = tmp_path / "session.json"
+        session_path.write_text(json.dumps({"cookies": []}))
+        mock_harvest.return_value = session_path
+
+        result = runner.invoke(app, ["auth", TEST_URL, "--output-cookies"])
+
+        assert result.exit_code == 0
+        printed = json.loads(result.output.strip())
+        assert printed == {"FedAuth": None, "rtFa": None}
+
 
 class TestListCommand:
     """sharepoint-dl list subcommand."""
@@ -447,7 +657,7 @@ class TestDownloadConfirmation:
         assert result.exit_code == 0
         assert "Download 1 file" in result.output
         assert "1.0 KB" in result.output
-        assert "to /tmp/dest?" in result.output
+        assert f"to {Path('/tmp/dest')}?" in result.output
 
 
 class TestDownloadExitCode:

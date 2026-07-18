@@ -8,6 +8,7 @@ import requests
 from sharepoint_dl.enumerator.traversal import (
     AuthExpiredError,
     enumerate_files,
+    fetch_single_file,
 )
 
 SITE_URL = "https://contoso.sharepoint.com/sites/shared"
@@ -297,3 +298,55 @@ class TestSharePointMetadata:
         assert entry.sharepoint_created_by_email == "alice@example.com"
         assert entry.sharepoint_modified_by == "Bob Uploader"
         assert entry.sharepoint_modified_by_email == "bob@example.com"
+
+
+class TestFetchSingleFile:
+    """fetch_single_file retrieves metadata for one file, no traversal."""
+
+    def test_fetch_single_file_returns_entry(self):
+        session = MagicMock(spec=requests.Session)
+        session.get.return_value = _mock_response(json_data={
+            "d": {
+                "Name": "report.pdf",
+                "ServerRelativeUrl": "/sites/shared/Images/report.pdf",
+                "Length": "555",
+                "TimeCreated": "2026-01-14T09:15:00Z",
+                "TimeLastModified": "2026-01-15T10:30:00Z",
+                "Author": {"Title": "Alice Creator", "Email": "alice@example.com"},
+                "ModifiedBy": {"Title": "Bob Uploader", "Email": "bob@example.com"},
+            }
+        })
+
+        entry = fetch_single_file(session, SITE_URL, "/sites/shared/Images/report.pdf")
+
+        assert entry.name == "report.pdf"
+        assert entry.server_relative_url == "/sites/shared/Images/report.pdf"
+        assert entry.size_bytes == 555
+        assert entry.folder_path == "/sites/shared/Images"
+        assert entry.sharepoint_created_by == "Alice Creator"
+        assert entry.sharepoint_modified_by_email == "bob@example.com"
+
+        url_used = session.get.call_args[0][0]
+        assert "GetFileByServerRelativeUrl" in url_used
+
+    def test_fetch_single_file_url_encodes_spaces(self):
+        session = MagicMock(spec=requests.Session)
+        session.get.return_value = _mock_response(json_data={
+            "d": {
+                "Name": "report.pdf",
+                "ServerRelativeUrl": "/sites/shared/My Documents/report.pdf",
+                "Length": "10",
+            }
+        })
+
+        fetch_single_file(session, SITE_URL, "/sites/shared/My Documents/report.pdf")
+
+        url_used = session.get.call_args[0][0]
+        assert "My%20Documents" in url_used
+
+    def test_fetch_single_file_raises_auth_expired_on_401(self):
+        session = MagicMock(spec=requests.Session)
+        session.get.return_value = _mock_401_response()
+
+        with pytest.raises(AuthExpiredError, match="Session expired"):
+            fetch_single_file(session, SITE_URL, "/sites/shared/Images/report.pdf")
